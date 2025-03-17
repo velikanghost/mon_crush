@@ -136,7 +136,7 @@ export async function POST(request: Request) {
     // Try to process queue
     processQueue();
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: "Match queued for processing" });
   } catch (error) {
     console.error("Error in candy match route:", error);
     return NextResponse.json({ error: "Failed to record candy match" }, { status: 500 });
