@@ -887,12 +887,12 @@ const Home: NextPage = () => {
 
   return (
     <div className="flex flex-col items-center flex-grow w-full px-4 pt-10 md:px-8">
-      <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2 max-w-7xl">
+      <div className="flex flex-col items-center justify-center w-full">
         {/* Left Column - Game Board */}
-        <div className="h-full shadow-xl card bg-base-100">
+        <div className="h-full shadow-xl card bg-base-100 w-[50%]">
           <div className="card-body">
-            <h2 className="card-title">Blockchain Candy Crush</h2>
-            <p className="mb-4 text-sm">Match 3 or more candies to record transactions on the blockchain!</p>
+            <h2 className="card-title">Crush</h2>
+            <p className="mb-4 text-sm">Match 3 or more items!</p>
 
             <div className="mb-4 shadow stats">
               <div className="stat">
@@ -909,17 +909,17 @@ const Home: NextPage = () => {
                     Syncing to blockchain...
                   </div>
                 )}
-                {!isSyncingHighScore && address && (
+                {/* {!isSyncingHighScore && address && (
                   <div className="stat-desc text-success">
                     Saved on blockchain
                     {playerScore && <span className="ml-1">({Number(playerScore)})</span>}
                   </div>
-                )}
-                <div className="stat-actions">
+                )} */}
+                {/* <div className="stat-actions">
                   <button className="btn btn-xs" onClick={resetHighScore}>
                     Reset
                   </button>
-                </div>
+                </div> */}
               </div>
 
               <div className="stat">
@@ -945,7 +945,7 @@ const Home: NextPage = () => {
             </div>
 
             <div className="relative">
-              <div className="mb-4 alert">
+              {/* <div className="mb-4 alert">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
@@ -960,7 +960,7 @@ const Home: NextPage = () => {
                   ></path>
                 </svg>
                 <span>{gameStatus}</span>
-              </div>
+              </div> */}
 
               <div className="grid grid-cols-8 gap-1 p-2 bg-gray-800 rounded-lg">
                 {gameBoard.map((row, y) =>
@@ -996,7 +996,7 @@ const Home: NextPage = () => {
         </div>
 
         {/* Right Column - Instructions */}
-        <div className="h-full shadow-xl card bg-base-100">
+        {/* <div className="h-full shadow-xl card bg-base-100">
           <div className="card-body">
             <h2 className="card-title">How It Works</h2>
 
@@ -1079,7 +1079,7 @@ const Home: NextPage = () => {
               </div>
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );
