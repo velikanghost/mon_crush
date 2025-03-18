@@ -39,7 +39,6 @@ const Home: NextPage = () => {
   const [txCount, setTxCount] = useState(0);
   const [gameStatus, setGameStatus] = useState("Ready to play!");
   const [walletConnected, setWalletConnected] = useState(false);
-  const [endgameMode, setEndgameMode] = useState(false);
   const [comboCounter, setComboCounter] = useState(0);
   const [scoreMultiplier, setScoreMultiplier] = useState(1);
   const [isSyncingHighScore, setIsSyncingHighScore] = useState(false);
@@ -65,7 +64,15 @@ const Home: NextPage = () => {
   // Function to update the player's high score on the blockchain
   const updateHighScoreOnChain = useCallback(
     async (newHighScore: number) => {
-      if (!address || !playerScore) return;
+      if (!address) {
+        console.log("Cannot update blockchain score: No wallet connected");
+        return;
+      }
+
+      if (!playerScore) {
+        console.log("Cannot update blockchain score: Player score not loaded from blockchain");
+        return;
+      }
 
       try {
         // Calculate how many points we need to add to reach the high score
@@ -76,7 +83,9 @@ const Home: NextPage = () => {
           const matchesToRecord = Math.ceil(scoreToAdd / 10); // Each match gives 10 points
 
           setIsSyncingHighScore(true);
-          console.log(`Updating blockchain high score to ${newHighScore} by recording ${matchesToRecord} matches`);
+          console.log(
+            `Updating blockchain high score from ${currentScoreNum} to ${newHighScore} by recording ${matchesToRecord} matches`,
+          );
 
           // Record a single match multiple times to update the score
           for (let i = 0; i < matchesToRecord; i++) {
@@ -84,10 +93,20 @@ const Home: NextPage = () => {
               functionName: "recordMatch",
               args: [0, 0, 1], // Use position (0,0) and candy type 1 (red)
             });
+            console.log(`Recorded match ${i + 1}/${matchesToRecord}`);
           }
 
           console.log("Blockchain high score updated successfully!");
           setIsSyncingHighScore(false);
+
+          // Force refetch player score from blockchain to confirm the update
+          setTimeout(() => {
+            console.log("Refreshing player score from blockchain...");
+          }, 2000);
+        } else {
+          console.log(
+            `Blockchain score ${currentScoreNum} is already higher than or equal to ${newHighScore}, no update needed`,
+          );
         }
       } catch (error) {
         console.error("Error updating high score on blockchain:", error);
@@ -102,9 +121,11 @@ const Home: NextPage = () => {
     setHighScore(0);
     if (typeof window !== "undefined") {
       const storageKey = address ? `candyCrushHighScore-${address}` : "candyCrushHighScore";
+      console.log(`Removing high score from localStorage with key ${storageKey}`);
       localStorage.removeItem(storageKey);
     }
     // Note: We can't reset the blockchain score as the contract doesn't have this functionality
+    console.log("Local high score reset. Note: Blockchain score cannot be reset as the contract doesn't support this.");
   }, [address]);
 
   // Load high score from localStorage on component mount
@@ -113,29 +134,19 @@ const Home: NextPage = () => {
     if (typeof window !== "undefined") {
       const storageKey = address ? `candyCrushHighScore-${address}` : "candyCrushHighScore";
       const savedHighScore = localStorage.getItem(storageKey);
+      console.log(`Checking for saved high score with key ${storageKey}`);
+
       if (savedHighScore) {
-        setHighScore(parseInt(savedHighScore, 10));
+        const score = parseInt(savedHighScore, 10);
+        console.log(`Found saved high score: ${score}`);
+        setHighScore(score);
       } else if (address) {
         // If wallet is connected but no high score for this wallet, reset high score
+        console.log(`No saved high score found for address ${address}, resetting to 0`);
         setHighScore(0);
       }
     }
   }, [address]);
-
-  // Update high score if contract score is higher
-  useEffect(() => {
-    if (playerScore && typeof playerScore === "bigint" && address) {
-      const scoreValue = Number(playerScore);
-      if (scoreValue > highScore) {
-        setHighScore(scoreValue);
-        // Save to localStorage
-        if (typeof window !== "undefined") {
-          const storageKey = `candyCrushHighScore-${address}`;
-          localStorage.setItem(storageKey, scoreValue.toString());
-        }
-      }
-    }
-  }, [playerScore, highScore, address]);
 
   // Read matches made from contract
   const { data: matchesMade } = useScaffoldReadContract({
@@ -201,7 +212,6 @@ const Home: NextPage = () => {
       newBoard = createNoMatchBoard();
     }
 
-    setEndgameMode(false);
     setScore(0);
     setGameBoard(newBoard);
     setSelectedCandy(null);
@@ -576,47 +586,44 @@ const Home: NextPage = () => {
           }
         }
 
-        // If score >= 500, don't refill with new candies (endgame mode)
-        if (!endgameMode) {
-          // Fill empty spaces at the top with new candies that don't create matches
-          for (let y = 0; y < emptySpaces; y++) {
-            // Determine what candy types would create matches
-            const invalidTypes = new Set<number>();
+        // Fill empty spaces at the top with new candies that don't create matches
+        for (let y = 0; y < emptySpaces; y++) {
+          // Determine what candy types would create matches
+          const invalidTypes = new Set<number>();
 
-            // Check horizontal matches
-            if (x >= 2 && newBoard[y][x - 1] === newBoard[y][x - 2]) {
-              invalidTypes.add(newBoard[y][x - 1]);
-            }
-            if (
-              x >= 1 &&
-              x < 7 &&
-              newBoard[y][x - 1] !== 0 &&
-              newBoard[y][x + 1] !== 0 &&
-              newBoard[y][x - 1] === newBoard[y][x + 1]
-            ) {
-              invalidTypes.add(newBoard[y][x - 1]);
-            }
-
-            // Check below for vertical matches (we're filling top-down)
-            if (
-              y < 6 &&
-              newBoard[y + 1][x] !== 0 &&
-              newBoard[y + 2][x] !== 0 &&
-              newBoard[y + 1][x] === newBoard[y + 2][x]
-            ) {
-              invalidTypes.add(newBoard[y + 1][x]);
-            }
-
-            // Choose a valid candy type
-            let validTypes = [1, 2, 3, 4, 5].filter(t => !invalidTypes.has(t));
-
-            // If there are no valid types for some reason, just pick any type
-            if (validTypes.length === 0) {
-              validTypes = [1, 2, 3, 4, 5];
-            }
-
-            newBoard[y][x] = validTypes[Math.floor(Math.random() * validTypes.length)];
+          // Check horizontal matches
+          if (x >= 2 && newBoard[y][x - 1] === newBoard[y][x - 2]) {
+            invalidTypes.add(newBoard[y][x - 1]);
           }
+          if (
+            x >= 1 &&
+            x < 7 &&
+            newBoard[y][x - 1] !== 0 &&
+            newBoard[y][x + 1] !== 0 &&
+            newBoard[y][x - 1] === newBoard[y][x + 1]
+          ) {
+            invalidTypes.add(newBoard[y][x - 1]);
+          }
+
+          // Check below for vertical matches (we're filling top-down)
+          if (
+            y < 6 &&
+            newBoard[y + 1][x] !== 0 &&
+            newBoard[y + 2][x] !== 0 &&
+            newBoard[y + 1][x] === newBoard[y + 2][x]
+          ) {
+            invalidTypes.add(newBoard[y + 1][x]);
+          }
+
+          // Choose a valid candy type
+          let validTypes = [1, 2, 3, 4, 5].filter(t => !invalidTypes.has(t));
+
+          // If there are no valid types for some reason, just pick any type
+          if (validTypes.length === 0) {
+            validTypes = [1, 2, 3, 4, 5];
+          }
+
+          newBoard[y][x] = validTypes[Math.floor(Math.random() * validTypes.length)];
         }
       }
 
@@ -625,30 +632,6 @@ const Home: NextPage = () => {
 
       // Use requestAnimationFrame to ensure the UI is updated before proceeding
       requestAnimationFrame(() => {
-        // In endgame mode, check if there are any valid moves left
-        if (endgameMode) {
-          if (!checkForValidMoves(newBoard)) {
-            setGameStatus("Game Over! No more moves possible. Final score: " + score);
-
-            // Save high score if needed
-            if (score > highScore) {
-              setHighScore(score);
-              if (typeof window !== "undefined") {
-                const storageKey = address ? `candyCrushHighScore-${address}` : "candyCrushHighScore";
-                localStorage.setItem(storageKey, score.toString());
-              }
-
-              // Update high score on blockchain when game is over
-              if (address) {
-                updateHighScoreOnChain(score);
-              }
-            }
-          } else {
-            setGameStatus("Endgame mode! No new candies will appear. Find all possible matches!");
-          }
-          return;
-        }
-
         // Only check for chain matches if requested
         if (checkForChainMatches) {
           // Allow a short delay for the UI to update
@@ -673,16 +656,7 @@ const Home: NextPage = () => {
         }
       });
     },
-    [
-      endgameMode,
-      checkForValidMoves,
-      score,
-      highScore,
-      address,
-      checkForMatchesInBoard,
-      processChainMatch,
-      updateHighScoreOnChain,
-    ],
+    [score, highScore, address, checkForMatchesInBoard, processChainMatch, updateHighScoreOnChain],
   );
 
   // Assign the implementation to our forward declaration
@@ -716,12 +690,6 @@ const Home: NextPage = () => {
       const newScore = score + pointsWithMultiplier;
       setScore(newScore);
 
-      // Check if player has reached 500 points to activate endgame mode
-      if (newScore >= 500 && !endgameMode) {
-        setEndgameMode(true);
-        setGameStatus("You've reached 500 points! Endgame mode activated - no new candies will appear!");
-      }
-
       // Update high score if needed
       if (newScore > highScore) {
         setHighScore(newScore);
@@ -729,6 +697,7 @@ const Home: NextPage = () => {
         if (typeof window !== "undefined") {
           const storageKey = address ? `candyCrushHighScore-${address}` : "candyCrushHighScore";
           localStorage.setItem(storageKey, newScore.toString());
+          console.log(`Saved high score ${newScore} to localStorage with key ${storageKey}`);
         }
 
         // Update high score on blockchain if user is connected
@@ -769,14 +738,12 @@ const Home: NextPage = () => {
     score,
     highScore,
     address,
-    endgameMode,
     scoreMultiplier,
     updateHighScoreOnChain,
     debouncedRefill,
     setMatches,
     setGameBoard,
     setScore,
-    setEndgameMode,
     setHighScore,
     setGameStatus,
     setComboCounter,
@@ -837,9 +804,36 @@ const Home: NextPage = () => {
           setGameBoard(updatedBoard);
           setGameStatus(`Found ${boardMatches.length} matches! Processing...`);
 
-          // Continue with score calculation and other processing
+          // Calculate score with multiplier
           const basePoints = boardMatches.length * 10;
-          setScore(prev => prev + basePoints);
+          const pointsWithMultiplier = Math.floor(basePoints * scoreMultiplier);
+          const newScore = score + pointsWithMultiplier;
+
+          // Update score
+          setScore(newScore);
+
+          // Update high score if needed
+          if (newScore > highScore) {
+            setHighScore(newScore);
+            // Save to localStorage
+            if (typeof window !== "undefined") {
+              const storageKey = address ? `candyCrushHighScore-${address}` : "candyCrushHighScore";
+              localStorage.setItem(storageKey, newScore.toString());
+              console.log(`Saved high score ${newScore} to localStorage with key ${storageKey}`);
+            }
+
+            // Update high score on blockchain if user is connected
+            if (address) {
+              updateHighScoreOnChain(newScore);
+            }
+          }
+
+          // Process transactions if wallet is connected
+          if (address) {
+            setTimeout(() => {
+              processBatchTransactions(boardMatches, address);
+            }, 0);
+          }
 
           // Trigger refill after a delay
           setTimeout(() => {
@@ -869,6 +863,28 @@ const Home: NextPage = () => {
     }
   };
 
+  // Update high score if contract score is higher
+  useEffect(() => {
+    if (playerScore && typeof playerScore === "bigint" && address) {
+      const scoreValue = Number(playerScore);
+      console.log(`Checking blockchain score (${scoreValue}) against local high score (${highScore})`);
+
+      if (scoreValue > highScore) {
+        console.log(
+          `Blockchain score ${scoreValue} is higher than local high score ${highScore}, updating local record`,
+        );
+        setHighScore(scoreValue);
+
+        // Save to localStorage
+        if (typeof window !== "undefined") {
+          const storageKey = `candyCrushHighScore-${address}`;
+          localStorage.setItem(storageKey, scoreValue.toString());
+          console.log(`Updated local high score to match blockchain: ${scoreValue}`);
+        }
+      }
+    }
+  }, [playerScore, highScore, address]);
+
   return (
     <div className="flex flex-col items-center flex-grow w-full px-4 pt-10 md:px-8">
       <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2 max-w-7xl">
@@ -893,7 +909,12 @@ const Home: NextPage = () => {
                     Syncing to blockchain...
                   </div>
                 )}
-                {!isSyncingHighScore && address && <div className="stat-desc text-success">Saved on blockchain</div>}
+                {!isSyncingHighScore && address && (
+                  <div className="stat-desc text-success">
+                    Saved on blockchain
+                    {playerScore && <span className="ml-1">({Number(playerScore)})</span>}
+                  </div>
+                )}
                 <div className="stat-actions">
                   <button className="btn btn-xs" onClick={resetHighScore}>
                     Reset
@@ -941,27 +962,6 @@ const Home: NextPage = () => {
                 <span>{gameStatus}</span>
               </div>
 
-              {endgameMode && (
-                <div className="mb-4 alert alert-warning">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-6 h-6 stroke-current shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    />
-                  </svg>
-                  <span>
-                    ENDGAME MODE: No new candies will appear! Make all possible matches with what's left on the board.
-                  </span>
-                </div>
-              )}
-
               <div className="grid grid-cols-8 gap-1 p-2 bg-gray-800 rounded-lg">
                 {gameBoard.map((row, y) =>
                   row.map((candy, x) => (
@@ -991,13 +991,6 @@ const Home: NextPage = () => {
               <button className="btn btn-primary btn-lg" onClick={resetGame}>
                 Reset Game
               </button>
-
-              {endgameMode && (
-                <div className="mt-2 text-center">
-                  <div className="badge badge-warning">Endgame Mode</div>
-                  <p className="mt-1 text-sm">Score: {score}/500</p>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1028,11 +1021,6 @@ const Home: NextPage = () => {
                   <li>Each match sends a blockchain transaction!</li>
                   <li className="text-success">Your high scores are permanently saved on the blockchain!</li>
                   <li>The board refills with candies that don't create automatic matches</li>
-                  <li className="font-semibold text-warning">
-                    At 500 points, you enter "Endgame Mode" - no new candies will appear, and you must use what's left
-                    on the board
-                  </li>
-                  <li className="text-warning">Game ends when no more matches are possible in Endgame Mode</li>
                 </ul>
               </div>
 
