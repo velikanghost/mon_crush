@@ -287,10 +287,7 @@ const Home: NextPage = () => {
   }, [initializeBoard]);
 
   // Forward declaration of the refillBoard function
-  const realRefillBoard = ((board: number[][], checkForChainMatches = true) => {
-    // This is a placeholder implementation that will be replaced later
-    console.log("Placeholder refill function called before real implementation was assigned");
-  }) as unknown as (board: number[][], checkForChainMatches?: boolean) => void;
+  let realRefillBoard: (board: number[][], checkForChainMatches?: boolean) => void;
 
   // Create a debounced refill function to prevent multiple refills happening at once
   const debouncedRefill = useCallback(
@@ -663,7 +660,7 @@ const Home: NextPage = () => {
   );
 
   // Assign the implementation to our forward declaration
-  Object.assign(realRefillBoard, realRefillBoardImpl);
+  realRefillBoard = realRefillBoardImpl;
 
   // Process matches - forward declaration
   const processMatches = useCallback(async () => {
