@@ -492,9 +492,13 @@ const Home: NextPage = () => {
             });
 
             if (response.ok) {
-              setTxCount(prev => prev + 1);
+              const data = await response.json();
+              console.log("Response from relayer:", data);
+              // Don't update txCount here anymore - we're updating it optimistically
             } else {
               console.error("Error response from relayer:", await response.text());
+              // If an error occurs, we could decrement the txCount here
+              // but for simplicity, we'll keep the optimistic count
             }
           } catch (error) {
             console.error("Error processing match:", error);
@@ -559,6 +563,9 @@ const Home: NextPage = () => {
       const basePoints = chainMatches.length * 10;
       const pointsWithMultiplier = Math.floor(basePoints * scoreMultiplier);
       setScore(prev => prev + pointsWithMultiplier);
+
+      // Update transaction count optimistically based on number of matches
+      setTxCount(prev => prev + chainMatches.length);
 
       // Process transactions if wallet is connected
       if (address) {
@@ -727,6 +734,9 @@ const Home: NextPage = () => {
       const newScore = score + pointsWithMultiplier;
       setScore(newScore);
 
+      // Update transaction count optimistically
+      setTxCount(prev => prev + currentMatches.length);
+
       // Update high score if needed
       if (newScore > highScore) {
         setHighScore(newScore);
@@ -852,6 +862,9 @@ const Home: NextPage = () => {
 
           // Update score
           setScore(newScore);
+
+          // Update transaction count optimistically
+          setTxCount(prev => prev + boardMatches.length);
 
           // Update high score if needed
           if (newScore > highScore) {
