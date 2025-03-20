@@ -40,6 +40,26 @@ const txQueue: QueuedTx[] = [];
 const busyKeys = new Set<string>();
 let isCheckingQueue = false;
 
+// Store transaction hashes in memory
+// We'll limit the size to avoid memory issues
+const MAX_STORED_HASHES = 100;
+export const txHashes: string[] = [];
+
+export const storeTxHash = (hash: string) => {
+  // Add to beginning of array (newest first)
+  txHashes.unshift(hash);
+
+  // Keep only the most recent MAX_STORED_HASHES
+  if (txHashes.length > MAX_STORED_HASHES) {
+    txHashes.pop();
+  }
+};
+
+// Add a function to clear transaction hashes
+export const clearTxHashes = () => {
+  txHashes.length = 0; // Clear the array
+};
+
 async function getAvailableKey(): Promise<string | undefined> {
   const key = PRIVATE_KEYS.find(key => !busyKeys.has(key));
   console.log("Available keys:", PRIVATE_KEYS.filter(key => !busyKeys.has(key)).length);
@@ -67,6 +87,9 @@ async function processSingleTransaction(privateKey: string, tx: QueuedTx) {
       args: [tx.x, tx.y, tx.candyType],
       chain: monadTestnet,
     });
+
+    // Store the transaction hash
+    storeTxHash(hash);
 
     console.log("Candy match transaction sent:", hash, "waiting for confirmation...");
 
@@ -107,14 +130,27 @@ async function processQueue() {
   isCheckingQueue = false;
 }
 
-export async function POST(request: Request) {
+export async function GET() {
+  try {
+    // Return the stored transaction hashes
+    return NextResponse.json({
+      hashes: txHashes,
+      count: txHashes.length,
+    });
+  } catch (error) {
+    console.error("Error retrieving transaction hashes:", error);
+    return NextResponse.json({ error: "Failed to retrieve transaction hashes" }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request, { params }: { params: { slug: string[] } }) {
   try {
     if (PRIVATE_KEYS.length === 0) {
       return NextResponse.json({ error: "No private keys configured" }, { status: 500 });
     }
 
     // Parse the request body
-    const body = await request.json();
+    const body = await req.json();
     const { x, y, candyType } = body;
 
     // Validate input data

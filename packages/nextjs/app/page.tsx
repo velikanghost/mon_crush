@@ -51,6 +51,9 @@ const Home: NextPage = () => {
   const [comboCounter, setComboCounter] = useState(0);
   const [scoreMultiplier, setScoreMultiplier] = useState(1);
   const [isSyncingHighScore, setIsSyncingHighScore] = useState(false);
+  const [txHashes, setTxHashes] = useState<string[]>([]);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isLoadingHashes, setIsLoadingHashes] = useState(false);
 
   // Add a ref for the match sound
   const matchSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -284,9 +287,10 @@ const Home: NextPage = () => {
     initializeBoard();
 
     // Add the debug CSS for chain reactions
+    let styleElement: HTMLStyleElement | null = null;
     if (typeof document !== "undefined") {
-      const style = document.createElement("style");
-      style.innerHTML = `
+      styleElement = document.createElement("style");
+      styleElement.innerHTML = `
         .chain-reaction {
           animation: flash-bg 0.3s;
         }
@@ -296,12 +300,26 @@ const Home: NextPage = () => {
           100% { background-color: rgba(255, 0, 0, 0); }
         }
       `;
-      document.head.appendChild(style);
-
-      return () => {
-        document.head.removeChild(style);
-      };
+      document.head.appendChild(styleElement);
     }
+
+    // Combined cleanup function for both style and API
+    return () => {
+      // Remove style element
+      if (styleElement && document) {
+        document.head.removeChild(styleElement);
+      }
+
+      // Clear transaction hashes on the server when component unmounts
+      fetch("/api/relayer/candymatch/clear", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }).catch(error => {
+        console.error("Error clearing transaction hashes on unmount:", error);
+      });
+    };
   }, [initializeBoard]);
 
   // Forward declaration of the refillBoard function
@@ -463,6 +481,26 @@ const Home: NextPage = () => {
     initializeBoard();
     setComboCounter(0);
     setScoreMultiplier(1);
+    setIsDrawerOpen(false);
+    setTxHashes([]); // Clear transaction hashes
+    setTxCount(0);
+    // Clear transaction hashes on the server
+    fetch("/api/relayer/candymatch/clear", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+      .then(response => {
+        if (response.ok) {
+          console.log("Transaction hashes cleared on server");
+        } else {
+          console.error("Failed to clear transaction hashes on server");
+        }
+      })
+      .catch(error => {
+        console.error("Error clearing transaction hashes:", error);
+      });
   }, [initializeBoard]);
 
   // Helper function to process transactions in batches without blocking the UI
@@ -939,207 +977,223 @@ const Home: NextPage = () => {
     }
   }, [playerScore, highScore, address]);
 
+  // Function to fetch transaction hashes from the API
+  const fetchTxHashes = useCallback(async () => {
+    try {
+      setIsLoadingHashes(true);
+      const response = await fetch("/api/relayer/candymatch", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Fetched transaction hashes:", data);
+        setTxHashes(data.hashes || []);
+      } else {
+        console.error("Error fetching transaction hashes:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error in fetch transaction hashes:", error);
+    } finally {
+      setIsLoadingHashes(false);
+    }
+  }, []);
+
+  // Fetch transaction hashes when drawer is opened
+  useEffect(() => {
+    if (isDrawerOpen) {
+      fetchTxHashes();
+
+      // Set up interval to fetch transaction hashes every 10 seconds while drawer is open
+      const intervalId = setInterval(fetchTxHashes, 10000);
+
+      // Clean up interval when drawer is closed or component unmounts
+      return () => clearInterval(intervalId);
+    }
+  }, [fetchTxHashes, isDrawerOpen]);
+
   return (
-    <div className="flex flex-col items-center flex-grow w-full px-4 pt-10 md:px-8">
-      <div className="flex flex-col items-center justify-center w-full">
-        {/* Left Column - Game Board */}
-        <div className="h-full shadow-xl card bg-base-100 w-[50%]">
-          <div className="card-body">
-            <h2 className="card-title">Monad Match</h2>
-            <p className="mb-4 text-sm">Match 3 or more creatures!</p>
-
-            <div className="mb-4 shadow stats">
-              <div className="stat">
-                <div className="stat-title">Your Score</div>
-                <div className="text-2xl stat-value">{score || 0}</div>
-              </div>
-
-              <div className="stat">
-                <div className="stat-title">High Score</div>
-                <div className="text-2xl stat-value">{highScore || 0}</div>
-                {isSyncingHighScore && (
-                  <div className="stat-desc text-info">
-                    <span className="mr-1 loading loading-spinner loading-xs"></span>
-                    Syncing to blockchain...
-                  </div>
-                )}
-                {/* {!isSyncingHighScore && address && (
-                  <div className="stat-desc text-success">
-                    Saved on blockchain
-                    {playerScore && <span className="ml-1">({Number(playerScore)})</span>}
-                  </div>
-                )} */}
-                {/* <div className="stat-actions">
-                  <button className="btn btn-xs" onClick={resetHighScore}>
-                    Reset
-                  </button>
-                </div> */}
-              </div>
-
-              <div className="stat">
-                <div className="stat-title">Transactions</div>
-                <div className="text-2xl stat-value">{txCount || 0}</div>
-              </div>
-
-              {scoreMultiplier > 1 && (
-                <div className="stat">
-                  <div className="stat-title text-accent">Combo Multiplier</div>
-                  <div className="text-2xl stat-value text-accent">×{scoreMultiplier.toFixed(1)}</div>
-                  <div className="stat-desc">{comboCounter} consecutive matches</div>
-                </div>
-              )}
-
-              {!walletConnected && (
-                <div className="stat">
-                  <div className="stat-title">Wallet Status</div>
-                  <div className="text-sm stat-value text-warning">Not Connected</div>
-                  <div className="stat-desc">Connect wallet to record scores on-chain</div>
-                </div>
-              )}
-            </div>
-
-            <div className="relative">
-              {/* <div className="mb-4 alert">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  className="w-6 h-6 stroke-info shrink-0"
+    <>
+      {/* Main content */}
+      <div className="flex flex-col items-center flex-grow w-full px-4 pt-10 md:px-8">
+        <div className="flex flex-col items-center justify-center w-full">
+          {/* Left Column - Game Board */}
+          <div className="h-full shadow-xl card bg-base-100 w-[50%]">
+            <div className="card-body">
+              <div className="flex items-center justify-between">
+                <h2 className="card-title">Monad Match</h2>
+                <button
+                  className="btn btn-sm btn-accent btn-outline"
+                  onClick={() => {
+                    setIsDrawerOpen(true);
+                    fetchTxHashes();
+                  }}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  ></path>
-                </svg>
-                <span>{gameStatus}</span>
-              </div> */}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-5 h-5 mr-1"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  History
+                </button>
+              </div>
+              <p className="mb-4 text-sm">Match 3 or more creatures!</p>
 
-              <div className="grid grid-cols-8 gap-[6px] p-3 bg-gray-800 rounded-lg">
-                {gameBoard.map((row, y) =>
-                  row.map((candy, x) => (
-                    <div
-                      key={`${x}-${y}`}
-                      className={`aspect-square rounded-md flex items-center justify-center cursor-pointer transition-all transform
-                                ${selectedCandy && selectedCandy.x === x && selectedCandy.y === y ? "ring-4 ring-purple-300 scale-110" : ""}
-                                ${matches.some(m => m.x === x && m.y === y) ? "animate-pulse" : ""}`}
-                      style={{
-                        backgroundColor: candy === 0 ? "transparent" : "#F4E7EA", // light purple background
-                        opacity: candy === 0 ? 0.2 : 1,
-                      }}
-                      onClick={() => handleCandyClick(x, y)}
-                    >
-                      {candy !== 0 && (
-                        <div className="flex items-center justify-center w-full h-full">
-                          <img
-                            src={CANDY_IMAGES[candy as keyof typeof CANDY_IMAGES]}
-                            alt={CANDY_NAMES[candy as keyof typeof CANDY_NAMES]}
-                            className="object-cover w-full h-full p-3 rounded-md"
-                          />
-                        </div>
-                      )}
+              <div className="mb-4 shadow stats">
+                <div className="stat">
+                  <div className="stat-title">Your Score</div>
+                  <div className="text-2xl stat-value">{score || 0}</div>
+                </div>
+
+                <div className="stat">
+                  <div className="stat-title">High Score</div>
+                  <div className="text-2xl stat-value">{highScore || 0}</div>
+                  {isSyncingHighScore && (
+                    <div className="stat-desc text-info">
+                      <span className="mr-1 loading loading-spinner loading-xs"></span>
+                      Syncing to blockchain...
                     </div>
-                  )),
+                  )}
+                </div>
+
+                <div className="stat">
+                  <div className="stat-title">Transactions</div>
+                  <div className="text-2xl stat-value">{txCount || 0}</div>
+                </div>
+
+                {scoreMultiplier > 1 && (
+                  <div className="stat">
+                    <div className="stat-title text-accent">Combo Multiplier</div>
+                    <div className="text-2xl stat-value text-accent">×{scoreMultiplier.toFixed(1)}</div>
+                    <div className="stat-desc">{comboCounter} consecutive matches</div>
+                  </div>
+                )}
+
+                {!walletConnected && (
+                  <div className="stat">
+                    <div className="stat-title">Wallet Status</div>
+                    <div className="text-sm stat-value text-warning">Not Connected</div>
+                    <div className="stat-desc">Connect wallet to record scores on-chain</div>
+                  </div>
                 )}
               </div>
-            </div>
 
-            <div className="justify-center mt-6 card-actions">
-              <button className="btn btn-primary btn-lg" onClick={resetGame}>
-                Reset Game
-              </button>
+              <div className="relative">
+                <div className="grid grid-cols-8 gap-[6px] p-3 bg-gray-800 rounded-lg">
+                  {gameBoard.map((row, y) =>
+                    row.map((candy, x) => (
+                      <div
+                        key={`${x}-${y}`}
+                        className={`aspect-square rounded-md flex items-center justify-center cursor-pointer transition-all transform
+                                  ${selectedCandy && selectedCandy.x === x && selectedCandy.y === y ? "ring-4 ring-purple-300 scale-110" : ""}
+                                  ${matches.some(m => m.x === x && m.y === y) ? "animate-pulse" : ""}`}
+                        style={{
+                          backgroundColor: candy === 0 ? "transparent" : "#F4E7EA", // light purple background
+                          opacity: candy === 0 ? 0.2 : 1,
+                        }}
+                        onClick={() => handleCandyClick(x, y)}
+                      >
+                        {candy !== 0 && (
+                          <div className="flex items-center justify-center w-full h-full">
+                            <img
+                              src={CANDY_IMAGES[candy as keyof typeof CANDY_IMAGES]}
+                              alt={CANDY_NAMES[candy as keyof typeof CANDY_NAMES]}
+                              className="object-cover w-full h-full p-3 rounded-md"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )),
+                  )}
+                </div>
+              </div>
+
+              <div className="justify-center mt-6 card-actions">
+                <button className="btn btn-primary btn-lg" onClick={resetGame}>
+                  Reset Game
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Right Column - Instructions */}
-        {/* <div className="h-full shadow-xl card bg-base-100">
-          <div className="card-body">
-            <h2 className="card-title">How It Works</h2>
+      {/* Transaction History Overlay */}
+      {isDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black bg-opacity-50">
+          {/* Close overlay when clicking outside */}
+          <div className="absolute inset-0" onClick={() => setIsDrawerOpen(false)}></div>
 
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-bold">Game Rules:</h3>
-                <ul className="pl-5 mt-2 space-y-2 list-disc">
-                  <li>Click on a candy to select it</li>
-                  <li>Click on an adjacent candy to swap them (only horizontal and vertical swaps, not diagonal)</li>
-                  <li>
-                    Match 3 or more identical candies in a row or column (horizontal or vertical only, not diagonal)
-                  </li>
-                  <li>
-                    Matches <strong>only</strong> happen when you make a move - no automatic matches
-                  </li>
-                  <li className="text-accent">
-                    <strong>Chain Reaction:</strong> When candies fall, new matches are automatically processed!
-                  </li>
-                  <li className="text-accent">
-                    <strong>Combo Bonus:</strong> Make 5 consecutive matches to get a 1.1× score multiplier!
-                  </li>
-                  <li>Each match sends a blockchain transaction!</li>
-                  <li className="text-success">Your high scores are permanently saved on the blockchain!</li>
-                  <li>The board refills with candies that don't create automatic matches</li>
-                </ul>
+          {/* History Panel */}
+          <div className="relative z-10 min-h-screen p-4 overflow-y-auto border-l border-purple-300 shadow-xl w-[30%] bg-base-200 text-base-content">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-accent">Transaction History</h3>
+              <button className="btn btn-sm btn-circle" onClick={() => setIsDrawerOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="divider"></div>
+
+            {isLoadingHashes ? (
+              <div className="flex flex-col items-center justify-center p-8">
+                <span className="loading loading-spinner loading-lg text-accent"></span>
+                <p className="mt-4 text-sm">Loading transaction history...</p>
               </div>
-
-              <div className="divider"></div>
-
-              <div>
-                <h3 className="text-lg font-bold">Blockchain Integration:</h3>
-                <ul className="pl-5 mt-2 space-y-2 list-disc">
-                  <li>Each match triggers a blockchain transaction</li>
-                  <li>The relayer uses multiple private keys to process transactions in parallel</li>
-                  <li>When you make a match, the request is queued on the server</li>
-                  <li>Available private keys are assigned to process transactions from the queue</li>
-                  <li>
-                    Each transaction calls the <code>recordMatch()</code> function on the CandyCrushGame contract
-                  </li>
-                  <li className="text-success">
-                    Your high score is permanently saved on the blockchain with your wallet address
-                  </li>
-                  <li>Your score and match count are stored on the blockchain</li>
-                </ul>
-              </div>
-
-              <div className="divider"></div>
-
-              <div>
-                <h3 className="text-lg font-bold">Candy Types:</h3>
-                <div className="grid grid-cols-5 gap-2 mt-2">
-                  {[1, 2, 3, 4, 5].map(type => (
-                    <div key={type} className="flex flex-col items-center">
-                      <div
-                        className="flex items-center justify-center w-10 h-10 text-xl font-bold text-white rounded-full"
-                        style={{ backgroundColor: CANDY_TYPES[type as keyof typeof CANDY_TYPES] }}
+            ) : txHashes.length > 0 ? (
+              <div className="space-y-2">
+                {/* <p className="mb-2 text-sm">Recent transactions: {txHashes.length}</p> */}
+                <div className="overflow-y-auto max-h-[70vh]">
+                  {txHashes.map((hash, index) => (
+                    <div key={index} className="pb-3 mb-3 border-b border-base-300">
+                      <div className="mb-1 text-xs">Transaction #{index + 1}</div>
+                      <a
+                        href={`https://monad-testnet.socialscan.io/tx/${hash}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block font-mono text-xs truncate link link-accent hover:text-clip"
                       >
-                        {type}
-                      </div>
-                      <span className="mt-1 text-xs">{CANDY_NAMES[type as keyof typeof CANDY_NAMES]}</span>
+                        {hash}
+                      </a>
                     </div>
                   ))}
                 </div>
               </div>
-
-              <div className="mt-6 alert alert-info">
+            ) : (
+              <div className="flex flex-col items-center justify-center p-8 text-center">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
+                  className="w-12 h-12 text-base-300"
                   fill="none"
                   viewBox="0 0 24 24"
-                  className="w-6 h-6 stroke-current shrink-0"
+                  stroke="currentColor"
                 >
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  ></path>
+                    strokeWidth={2}
+                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                  />
                 </svg>
+                <p className="mt-4">No transactions recorded yet.</p>
+                <p className="mt-2 text-sm">Make some matches to see your blockchain transactions!</p>
               </div>
-            </div>
+            )}
           </div>
-        </div> */}
-      </div>
-    </div>
+        </div>
+      )}
+    </>
   );
 };
 
