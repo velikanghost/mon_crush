@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NextPage } from "next";
 import { useAccount } from "wagmi";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
@@ -42,6 +42,9 @@ const Home: NextPage = () => {
   const [comboCounter, setComboCounter] = useState(0);
   const [scoreMultiplier, setScoreMultiplier] = useState(1);
   const [isSyncingHighScore, setIsSyncingHighScore] = useState(false);
+
+  // Add a ref for the match sound
+  const matchSoundRef = useRef<HTMLAudioElement | null>(null);
 
   // Hook for writing to the contract
   const { writeContractAsync: writeCandyCrushGameAsync } = useScaffoldWriteContract({
@@ -263,6 +266,12 @@ const Home: NextPage = () => {
 
   // Initialize the board when the component loads
   useEffect(() => {
+    // Initialize the match sound
+    if (typeof window !== "undefined") {
+      matchSoundRef.current = new Audio("/match.mp3");
+    }
+
+    // Original initialization code
     initializeBoard();
 
     // Add the debug CSS for chain reactions
@@ -493,9 +502,24 @@ const Home: NextPage = () => {
     }
   }, []);
 
+  // Function to play match sound
+  const playMatchSound = useCallback(() => {
+    if (matchSoundRef.current) {
+      // Reset the audio to start position and play
+      matchSoundRef.current.currentTime = 0;
+      matchSoundRef.current.play().catch(error => {
+        // Handle any browser autoplay restrictions
+        console.log("Error playing sound:", error);
+      });
+    }
+  }, []);
+
   // Process a chain match (automatic match after refill)
   const processChainMatch = useCallback(
     (board: number[][], chainMatches: { x: number; y: number; type: number }[]) => {
+      // Play match sound
+      playMatchSound();
+
       // Increment combo counter
       const newComboCounter = comboCounter + 1;
       setComboCounter(newComboCounter);
@@ -565,6 +589,7 @@ const Home: NextPage = () => {
       setComboCounter,
       setScoreMultiplier,
       setGameStatus,
+      playMatchSound,
     ],
   );
 
@@ -672,6 +697,9 @@ const Home: NextPage = () => {
     const currentMatches = checkForMatches();
 
     if (currentMatches.length > 0) {
+      // Play match sound
+      playMatchSound();
+
       // Start a new combo sequence when player initiates a match
       setComboCounter(1);
       setMatches(currentMatches);
@@ -747,6 +775,7 @@ const Home: NextPage = () => {
     setHighScore,
     setGameStatus,
     setComboCounter,
+    playMatchSound,
   ]);
 
   // Update the real implementation of processMatches
@@ -791,6 +820,9 @@ const Home: NextPage = () => {
         const boardMatches = checkForMatchesInBoard(newBoard);
 
         if (boardMatches.length > 0) {
+          // Play match sound
+          playMatchSound();
+
           // Process matches immediately using the new board
           setMatches(boardMatches);
           setComboCounter(1);
