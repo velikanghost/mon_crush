@@ -8,21 +8,30 @@ import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaf
 // Define candy types and their colors
 const CANDY_TYPES = {
   0: "transparent", // Empty
-  1: "#FF5252", // Red
-  2: "#536DFE", // Blue
-  3: "#4CAF50", // Green
-  4: "#FFD740", // Yellow
-  5: "#AB47BC", // Purple
+  1: "#5D3FD3", // Purple for MONAD hat creature
+  2: "#674ea7", // Darker purple for hedgehog creature
+  3: "#8A2BE2", // Blue-violet for fly
+  4: "#9370DB", // Medium purple for fox
+  5: "#6b5b95", // Purple for pixel character
 };
 
-// Define candy names
+// Define candy names and images
 const CANDY_NAMES = {
   0: "Empty",
-  1: "Red Candy",
-  2: "Blue Candy",
-  3: "Green Candy",
-  4: "Yellow Candy",
-  5: "Purple Candy",
+  1: "Monad",
+  2: "Hedgehog",
+  3: "Fly",
+  4: "Fox",
+  5: "Pixel",
+};
+
+// Image paths for candy types
+const CANDY_IMAGES = {
+  1: "/monad.png", // MONAD hat creature
+  2: "/hedgehog.png", // Purple hedgehog
+  3: "/fly.png", // Purple fly
+  4: "/fox.png", // Purple fox
+  5: "/pixel.png", // Pixel character
 };
 
 const Home: NextPage = () => {
@@ -923,8 +932,8 @@ const Home: NextPage = () => {
         {/* Left Column - Game Board */}
         <div className="h-full shadow-xl card bg-base-100 w-[50%]">
           <div className="card-body">
-            <h2 className="card-title">Crush</h2>
-            <p className="mb-4 text-sm">Match 3 or more items!</p>
+            <h2 className="card-title">Monad Match</h2>
+            <p className="mb-4 text-sm">Match 3 or more creatures!</p>
 
             <div className="mb-4 shadow stats">
               <div className="stat">
@@ -994,23 +1003,27 @@ const Home: NextPage = () => {
                 <span>{gameStatus}</span>
               </div> */}
 
-              <div className="grid grid-cols-8 gap-1 p-2 bg-gray-800 rounded-lg">
+              <div className="grid grid-cols-8 gap-[6px] p-3 bg-gray-800 rounded-lg">
                 {gameBoard.map((row, y) =>
                   row.map((candy, x) => (
                     <div
                       key={`${x}-${y}`}
                       className={`aspect-square rounded-md flex items-center justify-center cursor-pointer transition-all transform
-                                ${selectedCandy && selectedCandy.x === x && selectedCandy.y === y ? "ring-4 ring-white scale-110" : ""}
+                                ${selectedCandy && selectedCandy.x === x && selectedCandy.y === y ? "ring-4 ring-purple-300 scale-110" : ""}
                                 ${matches.some(m => m.x === x && m.y === y) ? "animate-pulse" : ""}`}
                       style={{
-                        backgroundColor: CANDY_TYPES[candy as keyof typeof CANDY_TYPES],
+                        backgroundColor: candy === 0 ? "transparent" : "#F4E7EA", // light purple background
                         opacity: candy === 0 ? 0.2 : 1,
                       }}
                       onClick={() => handleCandyClick(x, y)}
                     >
                       {candy !== 0 && (
-                        <div className="flex items-center justify-center w-8 h-8 text-xl font-bold text-white rounded-full shadow-inner md:w-10 md:h-10">
-                          {candy}
+                        <div className="flex items-center justify-center w-full h-full">
+                          <img
+                            src={CANDY_IMAGES[candy as keyof typeof CANDY_IMAGES]}
+                            alt={CANDY_NAMES[candy as keyof typeof CANDY_NAMES]}
+                            className="object-cover w-full h-full p-3 rounded-md"
+                          />
                         </div>
                       )}
                     </div>
