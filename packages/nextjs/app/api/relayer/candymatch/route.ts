@@ -24,7 +24,46 @@ const PRIVATE_KEYS = [
   process.env.RELAYER_PRIVATE_KEY_8,
   process.env.RELAYER_PRIVATE_KEY_9,
   process.env.RELAYER_PRIVATE_KEY_10,
-  // ... Include all private keys as in the original relayer
+  process.env.RELAYER_PRIVATE_KEY_11,
+  process.env.RELAYER_PRIVATE_KEY_12,
+  process.env.RELAYER_PRIVATE_KEY_13,
+  process.env.RELAYER_PRIVATE_KEY_14,
+  process.env.RELAYER_PRIVATE_KEY_15,
+  process.env.RELAYER_PRIVATE_KEY_16,
+  process.env.RELAYER_PRIVATE_KEY_17,
+  process.env.RELAYER_PRIVATE_KEY_18,
+  process.env.RELAYER_PRIVATE_KEY_19,
+  process.env.RELAYER_PRIVATE_KEY_20,
+  process.env.RELAYER_PRIVATE_KEY_21,
+  process.env.RELAYER_PRIVATE_KEY_22,
+  process.env.RELAYER_PRIVATE_KEY_23,
+  process.env.RELAYER_PRIVATE_KEY_24,
+  process.env.RELAYER_PRIVATE_KEY_25,
+  process.env.RELAYER_PRIVATE_KEY_26,
+  process.env.RELAYER_PRIVATE_KEY_27,
+  process.env.RELAYER_PRIVATE_KEY_28,
+  process.env.RELAYER_PRIVATE_KEY_29,
+  process.env.RELAYER_PRIVATE_KEY_30,
+  process.env.RELAYER_PRIVATE_KEY_31,
+  process.env.RELAYER_PRIVATE_KEY_32,
+  process.env.RELAYER_PRIVATE_KEY_33,
+  process.env.RELAYER_PRIVATE_KEY_34,
+  process.env.RELAYER_PRIVATE_KEY_35,
+  process.env.RELAYER_PRIVATE_KEY_36,
+  process.env.RELAYER_PRIVATE_KEY_37,
+  process.env.RELAYER_PRIVATE_KEY_38,
+  process.env.RELAYER_PRIVATE_KEY_39,
+  process.env.RELAYER_PRIVATE_KEY_40,
+  process.env.RELAYER_PRIVATE_KEY_41,
+  process.env.RELAYER_PRIVATE_KEY_42,
+  process.env.RELAYER_PRIVATE_KEY_43,
+  process.env.RELAYER_PRIVATE_KEY_44,
+  process.env.RELAYER_PRIVATE_KEY_45,
+  process.env.RELAYER_PRIVATE_KEY_46,
+  process.env.RELAYER_PRIVATE_KEY_47,
+  process.env.RELAYER_PRIVATE_KEY_48,
+  process.env.RELAYER_PRIVATE_KEY_49,
+  process.env.RELAYER_PRIVATE_KEY_50,
 ].filter((key): key is string => !!key);
 
 // Contract details - Get the CandyCrushGame contract address from deployedContracts
@@ -105,6 +144,7 @@ async function processSingleTransaction(privateKey: string, tx: QueuedTx) {
 }
 
 async function processQueue() {
+  console.log("Queue length:", txQueue.length, "Busy keys:", busyKeys.size);
   if (isCheckingQueue) return;
   isCheckingQueue = true;
 
