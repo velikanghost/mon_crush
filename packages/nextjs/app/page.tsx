@@ -511,13 +511,11 @@ const Home: NextPage = () => {
     const batchSize = 5;
     for (let i = 0; i < matches.length; i += batchSize) {
       const batch = matches.slice(i, i + batchSize);
-      console.log(`Sending batch ${i / batchSize + 1} with ${batch.length} matches to relayer`);
 
       // Process batch in parallel
       await Promise.all(
         batch.map(async match => {
           try {
-            // Only send the data the API expects: x, y, and candyType
             const response = await fetch("/api/relayer/candymatch", {
               method: "POST",
               headers: {
@@ -527,7 +525,7 @@ const Home: NextPage = () => {
                 x: match.x,
                 y: match.y,
                 candyType: match.type,
-                // playerAddress removed as it's not expected by the API
+                playerAddress: playerAddress, // Add player address to transaction
               }),
             });
 
@@ -609,13 +607,9 @@ const Home: NextPage = () => {
 
       // Process transactions if wallet is connected
       if (address) {
-        console.log(`Chain reaction #${newComboCounter}: Sending ${chainMatches.length} matches to the blockchain`);
-        // Use setTimeout to ensure UI updates complete before sending transactions
         setTimeout(() => {
-          processBatchTransactions(chainMatches, address || "");
-        }, 100); // Slightly longer timeout to ensure no race conditions
-      } else {
-        console.log("Chain reaction detected but wallet not connected - no blockchain transactions sent");
+          processBatchTransactions(chainMatches, address);
+        }, 0);
       }
 
       // Log debug info
@@ -799,13 +793,11 @@ const Home: NextPage = () => {
 
       // Process matches in the background
       if (address) {
-        console.log(`Initial match: Sending ${currentMatches.length} matches to the blockchain`);
         // Process transactions in the background without blocking the UI
         setTimeout(() => {
-          processBatchTransactions(currentMatches, address || "");
-        }, 100);
+          processBatchTransactions(currentMatches, address);
+        }, 0);
       } else {
-        console.log("Matches detected but wallet not connected - no blockchain transactions sent");
         setGameStatus("Connect your wallet to record matches on the blockchain!");
       }
 
@@ -1016,10 +1008,10 @@ const Home: NextPage = () => {
       fetchTxHashes();
 
       // Set up interval to fetch transaction hashes every 10 seconds while drawer is open
-      const intervalId = setInterval(fetchTxHashes, 10000);
+      //const intervalId = setInterval(fetchTxHashes, 10000);
 
       // Clean up interval when drawer is closed or component unmounts
-      return () => clearInterval(intervalId);
+      //return () => clearInterval(intervalId);
     }
   }, [fetchTxHashes, isDrawerOpen]);
 

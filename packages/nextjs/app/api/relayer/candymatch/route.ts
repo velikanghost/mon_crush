@@ -144,7 +144,7 @@ async function processSingleTransaction(privateKey: string, tx: QueuedTx) {
 }
 
 async function processQueue() {
-  console.log("Queue length:", txQueue.length, "Busy keys:", busyKeys.size);
+  console.log({ txQueue, txHashes });
   if (isCheckingQueue) return;
   isCheckingQueue = true;
 
