@@ -1073,6 +1073,11 @@ const Home: NextPage = () => {
                   <div className="text-base md:text-2xl stat-value">{highScore || 0}</div>
                 </div>
 
+                <div className="stat">
+                  <div className="stat-title">Transactions</div>
+                  <div className="text-base md:text-2xl stat-value">{txCount || 0}</div>
+                </div>
+
                 {scoreMultiplier > 1 && (
                   <div className="stat">
                     <div className="stat-title text-accent">Combo Multiplier</div>
