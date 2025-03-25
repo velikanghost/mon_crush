@@ -82,21 +82,22 @@ let isCheckingQueue = false;
 // Store transaction hashes in memory
 // We'll limit the size to avoid memory issues
 const MAX_STORED_HASHES = 100;
-export const txHashes: string[] = [];
+// We don't need to export these anymore since we're using localStorage on the client
+const txHashes: string[] = [];
 
-export const storeTxHash = (hash: string) => {
-  // Add to beginning of array (newest first)
+// This function is still useful for logging, but we don't need to export it
+const storeTxHash = (hash: string) => {
+  // We'll still keep this for local logging purposes
   txHashes.unshift(hash);
-
-  // Keep only the most recent MAX_STORED_HASHES
   if (txHashes.length > MAX_STORED_HASHES) {
     txHashes.pop();
   }
 };
 
-// Add a function to clear transaction hashes
-export const clearTxHashes = () => {
-  txHashes.length = 0; // Clear the array
+// We don't need the clearTxHashes function anymore
+// But we'll keep this for backwards compatibility
+const clearTxHashes = () => {
+  txHashes.length = 0;
 };
 
 async function getAvailableKey(): Promise<string | undefined> {
@@ -127,7 +128,7 @@ async function processSingleTransaction(privateKey: string, tx: QueuedTx) {
       chain: monadTestnet,
     });
 
-    // Store the transaction hash
+    // Store the transaction hash locally for logging
     storeTxHash(hash);
 
     console.log("Candy match transaction sent:", hash, "waiting for confirmation...");
@@ -135,8 +136,12 @@ async function processSingleTransaction(privateKey: string, tx: QueuedTx) {
     // Wait for transaction to be confirmed
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
     console.log("Transaction confirmed in block:", receipt.blockNumber);
+
+    // Return the hash for the response
+    return hash;
   } catch (error) {
     console.error("Error processing tx:", error);
+    return null;
   } finally {
     busyKeys.delete(privateKey);
     console.log("Freed key:", privateKey.slice(-4), "Time taken:", Date.now() - startTime, "ms");
@@ -172,7 +177,7 @@ async function processQueue() {
 
 export async function GET() {
   try {
-    // Return the stored transaction hashes
+    // Return the stored transaction hashes (for backwards compatibility)
     return NextResponse.json({
       hashes: txHashes,
       count: txHashes.length,
@@ -183,7 +188,7 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request, { params }: { params: { slug: string[] } }) {
+export async function POST(req: Request) {
   try {
     if (PRIVATE_KEYS.length === 0) {
       return NextResponse.json({ error: "No private keys configured" }, { status: 500 });
@@ -212,7 +217,41 @@ export async function POST(req: Request, { params }: { params: { slug: string[] 
     // Try to process queue
     processQueue();
 
-    return NextResponse.json({ success: true, message: "Match queued for processing" });
+    // Get an available key
+    const privateKey = await getAvailableKey();
+    if (!privateKey) {
+      return NextResponse.json({ error: "No available relayer keys" }, { status: 503 });
+    }
+
+    // Process the transaction immediately to get the hash
+    busyKeys.add(privateKey);
+    const formattedPrivateKey = privateKey.startsWith("0x")
+      ? (privateKey as `0x${string}`)
+      : (`0x${privateKey}` as `0x${string}`);
+    const account = privateKeyToAccount(formattedPrivateKey);
+    const wallet = createWalletClient({
+      account,
+      chain: monadTestnet,
+      transport,
+    });
+
+    const hash = await wallet.writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "recordMatch",
+      args: [x, y, candyType],
+      chain: monadTestnet,
+    });
+
+    // Store the hash for logging
+    storeTxHash(hash);
+
+    // Return the actual transaction hash
+    return NextResponse.json({
+      success: true,
+      message: "Match queued for processing",
+      hash: hash, // Return the actual transaction hash
+    });
   } catch (error) {
     console.error("Error in candy match route:", error);
     return NextResponse.json({ error: "Failed to record candy match" }, { status: 500 });

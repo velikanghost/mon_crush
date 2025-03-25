@@ -58,6 +58,59 @@ const Home: NextPage = () => {
   // Add a ref for the match sound
   const matchSoundRef = useRef<HTMLAudioElement | null>(null);
 
+  // Function to save transaction hashes to localStorage
+  const saveTxHashToLocalStorage = useCallback((hash: string) => {
+    if (typeof window !== "undefined") {
+      // Get existing hashes
+      const existingHashesStr = localStorage.getItem("monadMatchTxHashes") || "[]";
+      try {
+        const existingHashes = JSON.parse(existingHashesStr) as string[];
+
+        // Add new hash to the beginning (newest first)
+        existingHashes.unshift(hash);
+
+        // Limit to 100 hashes
+        const limitedHashes = existingHashes.slice(0, 100);
+
+        // Save back to localStorage
+        localStorage.setItem("monadMatchTxHashes", JSON.stringify(limitedHashes));
+      } catch (error) {
+        console.error("Error saving hash to localStorage:", error);
+      }
+    }
+  }, []);
+
+  // Function to clear transaction hashes from localStorage
+  const clearTxHashesFromLocalStorage = useCallback(() => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("monadMatchTxHashes");
+    }
+  }, []);
+
+  // Function to fetch transaction hashes from localStorage
+  const fetchTxHashes = useCallback(() => {
+    try {
+      setIsLoadingHashes(true);
+
+      // Read from localStorage
+      if (typeof window !== "undefined") {
+        const hashesStr = localStorage.getItem("monadMatchTxHashes") || "[]";
+        try {
+          const hashes = JSON.parse(hashesStr) as string[];
+          setTxHashes(hashes);
+        } catch (error) {
+          console.error("Error parsing hashes from localStorage:", error);
+          setTxHashes([]);
+        }
+      }
+    } catch (error) {
+      console.error("Error in fetch transaction hashes:", error);
+      setTxHashes([]);
+    } finally {
+      setIsLoadingHashes(false);
+    }
+  }, []);
+
   // Hook for writing to the contract
   const { writeContractAsync: writeCandyCrushGameAsync } = useScaffoldWriteContract({
     contractName: "CandyCrushGame",
@@ -276,11 +329,14 @@ const Home: NextPage = () => {
     return board;
   };
 
-  // Initialize the board when the component loads
+  // Initialize the board when the component loads and setup localStorage cleanup
   useEffect(() => {
     // Initialize the match sound
     if (typeof window !== "undefined") {
       matchSoundRef.current = new Audio("/match.mp3");
+
+      // Load transaction hashes from localStorage on initialization
+      fetchTxHashes();
     }
 
     // Original initialization code
@@ -303,24 +359,14 @@ const Home: NextPage = () => {
       document.head.appendChild(styleElement);
     }
 
-    // Combined cleanup function for both style and API
+    // Combined cleanup function for style
     return () => {
       // Remove style element
       if (styleElement && document) {
         document.head.removeChild(styleElement);
       }
-
-      // Clear transaction hashes on the server when component unmounts
-      fetch("/api/relayer/candymatch/clear", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }).catch(error => {
-        console.error("Error clearing transaction hashes on unmount:", error);
-      });
     };
-  }, [initializeBoard]);
+  }, [initializeBoard, fetchTxHashes]);
 
   // Forward declaration of the refillBoard function
   let realRefillBoard: (board: number[][], checkForChainMatches?: boolean) => void;
@@ -482,26 +528,12 @@ const Home: NextPage = () => {
     setComboCounter(0);
     setScoreMultiplier(1);
     setIsDrawerOpen(false);
-    setTxHashes([]); // Clear transaction hashes
+    setTxHashes([]); // Clear transaction hashes state
     setTxCount(0);
-    // Clear transaction hashes on the server
-    fetch("/api/relayer/candymatch/clear", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    })
-      .then(response => {
-        if (response.ok) {
-          console.log("Transaction hashes cleared on server");
-        } else {
-          console.error("Failed to clear transaction hashes on server");
-        }
-      })
-      .catch(error => {
-        console.error("Error clearing transaction hashes:", error);
-      });
-  }, [initializeBoard]);
+
+    // Clear transaction hashes from localStorage
+    clearTxHashesFromLocalStorage();
+  }, [initializeBoard, clearTxHashesFromLocalStorage]);
 
   // Helper function to process transactions in batches without blocking the UI
   const processBatchTransactions = async (matches: { x: number; y: number; type: number }[], playerAddress: string) => {
@@ -532,11 +564,16 @@ const Home: NextPage = () => {
             if (response.ok) {
               const data = await response.json();
               console.log("Response from relayer:", data);
-              // Don't update txCount here anymore - we're updating it optimistically
+
+              // Save the actual transaction hash from the blockchain
+              if (data.hash) {
+                console.log("Saving blockchain transaction hash:", data.hash);
+                saveTxHashToLocalStorage(data.hash);
+              } else {
+                console.warn("No transaction hash received from relayer");
+              }
             } else {
               console.error("Error response from relayer:", await response.text());
-              // If an error occurs, we could decrement the txCount here
-              // but for simplicity, we'll keep the optimistic count
             }
           } catch (error) {
             console.error("Error processing match:", error);
@@ -607,9 +644,14 @@ const Home: NextPage = () => {
 
       // Process transactions if wallet is connected
       if (address) {
-        setTimeout(() => {
-          processBatchTransactions(chainMatches, address);
-        }, 0);
+        // Process transactions immediately without setTimeout
+        processBatchTransactions(chainMatches, address)
+          .then(() => {
+            console.log(`Processed ${chainMatches.length} chain reaction transactions`);
+          })
+          .catch(error => {
+            console.error("Error processing chain reaction transactions:", error);
+          });
       }
 
       // Log debug info
@@ -977,53 +1019,22 @@ const Home: NextPage = () => {
     }
   }, [playerScore, highScore, address]);
 
-  // Function to fetch transaction hashes from the API
-  const fetchTxHashes = useCallback(async () => {
-    try {
-      setIsLoadingHashes(true);
-      const response = await fetch("/api/relayer/candymatch", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Fetched transaction hashes:", data);
-        setTxHashes(data.hashes || []);
-      } else {
-        console.error("Error fetching transaction hashes:", await response.text());
-      }
-    } catch (error) {
-      console.error("Error in fetch transaction hashes:", error);
-    } finally {
-      setIsLoadingHashes(false);
-    }
-  }, []);
-
   // Fetch transaction hashes when drawer is opened
   useEffect(() => {
     if (isDrawerOpen) {
       fetchTxHashes();
-
-      // Set up interval to fetch transaction hashes every 10 seconds while drawer is open
-      //const intervalId = setInterval(fetchTxHashes, 10000);
-
-      // Clean up interval when drawer is closed or component unmounts
-      //return () => clearInterval(intervalId);
     }
   }, [fetchTxHashes, isDrawerOpen]);
 
   return (
     <>
       {/* Main content */}
-      <div className="flex flex-col items-center flex-grow w-full px-4 pt-10 md:px-8">
+      <div className="flex flex-col items-center flex-grow w-full pt-10 md:px-8">
         <div className="flex flex-col items-center justify-center w-full">
           {/* Left Column - Game Board */}
-          <div className="h-full shadow-xl card bg-base-100 w-[50%]">
-            <div className="card-body">
-              <div className="flex items-center justify-between">
+          <div className="h-full shadow-xl card bg-base-100 w-full md:w-[50%]">
+            <div className="md:card-body">
+              <div className="flex items-center justify-between px-3 py-3">
                 <h2 className="card-title">Monad Match</h2>
                 <button
                   className="btn btn-sm btn-accent btn-outline"
@@ -1049,54 +1060,35 @@ const Home: NextPage = () => {
                   History
                 </button>
               </div>
-              <p className="mb-4 text-sm">Match 3 or more creatures!</p>
+              <p className="px-3 mb-4 text-sm">Match 3 or more creatures!</p>
 
-              <div className="mb-4 shadow stats">
+              <div className="px-3 mb-4 shadow stats">
                 <div className="stat">
-                  <div className="stat-title">Your Score</div>
-                  <div className="text-2xl stat-value">{score || 0}</div>
+                  <div className="stat-title">Score (Tx)</div>
+                  <div className="text-base md:text-2xl stat-value">{score || 0}</div>
                 </div>
 
                 <div className="stat">
                   <div className="stat-title">High Score</div>
-                  <div className="text-2xl stat-value">{highScore || 0}</div>
-                  {isSyncingHighScore && (
-                    <div className="stat-desc text-info">
-                      <span className="mr-1 loading loading-spinner loading-xs"></span>
-                      Syncing to blockchain...
-                    </div>
-                  )}
-                </div>
-
-                <div className="stat">
-                  <div className="stat-title">Transactions</div>
-                  <div className="text-2xl stat-value">{txCount || 0}</div>
+                  <div className="text-base md:text-2xl stat-value">{highScore || 0}</div>
                 </div>
 
                 {scoreMultiplier > 1 && (
                   <div className="stat">
                     <div className="stat-title text-accent">Combo Multiplier</div>
-                    <div className="text-2xl stat-value text-accent">×{scoreMultiplier.toFixed(1)}</div>
+                    <div className="text-base md:text-2xl stat-value text-accent">×{scoreMultiplier.toFixed(1)}</div>
                     <div className="stat-desc">{comboCounter} consecutive matches</div>
-                  </div>
-                )}
-
-                {!walletConnected && (
-                  <div className="stat">
-                    <div className="stat-title">Wallet Status</div>
-                    <div className="text-sm stat-value text-warning">Not Connected</div>
-                    <div className="stat-desc">Connect wallet to record scores on-chain</div>
                   </div>
                 )}
               </div>
 
               <div className="relative">
-                <div className="grid grid-cols-8 gap-[6px] p-3 bg-gray-800 rounded-lg">
+                <div className="grid grid-cols-8 gap-1 md:gap-[6px] p-2 md:p-3 bg-gray-800 rounded-lg">
                   {gameBoard.map((row, y) =>
                     row.map((candy, x) => (
                       <div
                         key={`${x}-${y}`}
-                        className={`aspect-square rounded-md flex items-center justify-center cursor-pointer transition-all transform
+                        className={`aspect-square rounded-sm md:rounded-md flex items-center justify-center cursor-pointer transition-all transform
                                   ${selectedCandy && selectedCandy.x === x && selectedCandy.y === y ? "ring-4 ring-purple-300 scale-110" : ""}
                                 ${matches.some(m => m.x === x && m.y === y) ? "animate-pulse" : ""}`}
                         style={{
@@ -1110,7 +1102,7 @@ const Home: NextPage = () => {
                             <img
                               src={CANDY_IMAGES[candy as keyof typeof CANDY_IMAGES]}
                               alt={CANDY_NAMES[candy as keyof typeof CANDY_NAMES]}
-                              className="object-cover w-full h-full p-3 rounded-md"
+                              className="object-cover w-full h-full p-[6px] rounded-md md:p-3"
                             />
                           </div>
                         )}
@@ -1137,7 +1129,7 @@ const Home: NextPage = () => {
           <div className="absolute inset-0" onClick={() => setIsDrawerOpen(false)}></div>
 
           {/* History Panel */}
-          <div className="relative z-10 min-h-screen p-4 overflow-y-auto border-l border-purple-300 shadow-xl w-[30%] bg-base-200 text-base-content">
+          <div className="relative z-10 min-h-screen p-4 overflow-y-auto border-l border-purple-300 shadow-xl w-full md:w-[30%] bg-base-200 text-base-content">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-accent">Transaction History</h3>
               <button className="btn btn-sm btn-circle" onClick={() => setIsDrawerOpen(false)}>
@@ -1164,7 +1156,7 @@ const Home: NextPage = () => {
                         rel="noreferrer"
                         className="block font-mono text-xs truncate link link-accent hover:text-clip"
                       >
-                        {hash}
+                        {hash.slice(0, 14) + "..." + hash.slice(50)}
                       </a>
                     </div>
                   ))}
