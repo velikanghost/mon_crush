@@ -52,64 +52,36 @@ const Home: NextPage = () => {
   const [scoreMultiplier, setScoreMultiplier] = useState(1);
   const [isSyncingHighScore, setIsSyncingHighScore] = useState(false);
   const [txHashes, setTxHashes] = useState<string[]>([]);
+  const [pendingTxCount, setPendingTxCount] = useState(0);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isLoadingHashes, setIsLoadingHashes] = useState(false);
 
   // Add a ref for the match sound
   const matchSoundRef = useRef<HTMLAudioElement | null>(null);
 
-  // Function to save transaction hashes to localStorage
-  const saveTxHashToLocalStorage = useCallback((hash: string) => {
-    if (typeof window !== "undefined") {
-      // Get existing hashes
-      const existingHashesStr = localStorage.getItem("monadMatchTxHashes") || "[]";
-      try {
-        const existingHashes = JSON.parse(existingHashesStr) as string[];
+  // Function to fetch transaction hashes from the backend API
+  const fetchTxHashesFromApi = useCallback(async () => {
+    if (!isDrawerOpen) return; // Only fetch when drawer is open
 
-        // Add new hash to the beginning (newest first)
-        existingHashes.unshift(hash);
-
-        // Limit to 100 hashes
-        const limitedHashes = existingHashes.slice(0, 100);
-
-        // Save back to localStorage
-        localStorage.setItem("monadMatchTxHashes", JSON.stringify(limitedHashes));
-      } catch (error) {
-        console.error("Error saving hash to localStorage:", error);
-      }
-    }
-  }, []);
-
-  // Function to clear transaction hashes from localStorage
-  const clearTxHashesFromLocalStorage = useCallback(() => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("monadMatchTxHashes");
-    }
-  }, []);
-
-  // Function to fetch transaction hashes from localStorage
-  const fetchTxHashes = useCallback(() => {
+    setIsLoadingHashes(true);
     try {
-      setIsLoadingHashes(true);
-
-      // Read from localStorage
-      if (typeof window !== "undefined") {
-        const hashesStr = localStorage.getItem("monadMatchTxHashes") || "[]";
-        try {
-          const hashes = JSON.parse(hashesStr) as string[];
-          setTxHashes(hashes);
-        } catch (error) {
-          console.error("Error parsing hashes from localStorage:", error);
-          setTxHashes([]);
-        }
+      const response = await fetch("/api/relayer/candymatch"); // Use GET endpoint
+      if (response.ok) {
+        const data = await response.json();
+        setTxHashes(data.hashes || []); // Update state with fetched hashes
+        // We don't get pending count from GET, maybe update based on last POST response?
+        console.log(`Fetched ${data.hashes?.length || 0} hashes from backend.`);
+      } else {
+        console.error("Error fetching transaction hashes:", await response.text());
+        setTxHashes([]);
       }
     } catch (error) {
-      console.error("Error in fetch transaction hashes:", error);
+      console.error("Error fetching transaction hashes:", error);
       setTxHashes([]);
     } finally {
       setIsLoadingHashes(false);
     }
-  }, []);
+  }, [isDrawerOpen]); // Depend on isDrawerOpen to refetch when opened
 
   // Hook for writing to the contract
   const { writeContractAsync: writeCandyCrushGameAsync } = useScaffoldWriteContract({
@@ -170,6 +142,7 @@ const Home: NextPage = () => {
           // Force refetch player score from blockchain to confirm the update
           setTimeout(() => {
             console.log("Refreshing player score from blockchain...");
+            // Need to find a way to trigger refetch if using useScaffoldReadContract
           }, 2000);
         } else {
           console.log(
@@ -184,7 +157,7 @@ const Home: NextPage = () => {
     [address, playerScore, writeCandyCrushGameAsync],
   );
 
-  // Reset high score function - updated to also reset on blockchain
+  // Reset high score function
   const resetHighScore = useCallback(() => {
     setHighScore(0);
     if (typeof window !== "undefined") {
@@ -192,26 +165,18 @@ const Home: NextPage = () => {
       console.log(`Removing high score from localStorage with key ${storageKey}`);
       localStorage.removeItem(storageKey);
     }
-    // Note: We can't reset the blockchain score as the contract doesn't have this functionality
-    console.log("Local high score reset. Note: Blockchain score cannot be reset as the contract doesn't support this.");
+    console.log("Local high score reset. Note: Blockchain score cannot be reset easily.");
   }, [address]);
 
-  // Load high score from localStorage on component mount
+  // Load high score from localStorage
   useEffect(() => {
-    // Only run on client side
     if (typeof window !== "undefined") {
       const storageKey = address ? `candyCrushHighScore-${address}` : "candyCrushHighScore";
       const savedHighScore = localStorage.getItem(storageKey);
-      console.log(`Checking for saved high score with key ${storageKey}`);
-
       if (savedHighScore) {
-        const score = parseInt(savedHighScore, 10);
-        console.log(`Found saved high score: ${score}`);
-        setHighScore(score);
+        setHighScore(parseInt(savedHighScore, 10));
       } else if (address) {
-        // If wallet is connected but no high score for this wallet, reset high score
-        console.log(`No saved high score found for address ${address}, resetting to 0`);
-        setHighScore(0);
+        setHighScore(0); // Reset if new address with no saved score
       }
     }
   }, [address]);
@@ -240,43 +205,32 @@ const Home: NextPage = () => {
     let noMatches = false;
 
     while (!noMatches && attemptCount < 10) {
-      // Check for existing matches
       const existingMatches = checkForMatchesInBoard(newBoard);
-
       if (existingMatches.length === 0) {
         noMatches = true;
       } else {
-        // For each match, replace with a different random candy
+        // Replace matched candies
         existingMatches.forEach(match => {
           let newType;
           do {
             newType = Math.floor(Math.random() * 5) + 1;
+            // Add checks to prevent immediate new matches if possible
           } while (
-            // Avoid creating new horizontal matches
-            (match.x > 0 &&
-              match.x < 7 &&
-              newType === newBoard[match.y][match.x - 1] &&
-              newType === newBoard[match.y][match.x + 1]) ||
-            (match.x > 1 && newType === newBoard[match.y][match.x - 1] && newType === newBoard[match.y][match.x - 2]) ||
-            (match.x < 6 && newType === newBoard[match.y][match.x + 1] && newType === newBoard[match.y][match.x + 2]) ||
-            // Avoid creating new vertical matches
-            (match.y > 0 &&
-              match.y < 7 &&
-              newType === newBoard[match.y - 1][match.x] &&
-              newType === newBoard[match.y + 1][match.x]) ||
-            (match.y > 1 && newType === newBoard[match.y - 1][match.x] && newType === newBoard[match.y - 2][match.x]) ||
-            (match.y < 6 && newType === newBoard[match.y + 1][match.x] && newType === newBoard[match.y + 2][match.x])
+            // Simple check: Avoid direct match with neighbors
+            (match.x > 0 && newType === newBoard[match.y][match.x - 1]) ||
+            (match.x < 7 && newType === newBoard[match.y][match.x + 1]) ||
+            (match.y > 0 && newType === newBoard[match.y - 1][match.x]) ||
+            (match.y < 7 && newType === newBoard[match.y + 1][match.x])
           );
-
           newBoard[match.y][match.x] = newType;
         });
-
         attemptCount++;
       }
     }
 
-    // If we couldn't resolve all matches after multiple attempts, just create a new random board
     if (!noMatches) {
+      console.warn("Could not generate initial board without matches, creating best effort board.");
+      // If still matches after attempts, use the potentially flawed board or try createNoMatchBoard
       newBoard = createNoMatchBoard();
     }
 
@@ -284,7 +238,8 @@ const Home: NextPage = () => {
     setGameBoard(newBoard);
     setSelectedCandy(null);
     setMatches([]);
-    setGameStatus("New game started! Match 3 or more candies in a row or column.");
+    setPendingTxCount(0); // Reset pending count
+    setGameStatus("New game started! Match 3 or more candies.");
   }, []);
 
   // Helper function to create a board with no matches
@@ -295,37 +250,17 @@ const Home: NextPage = () => {
 
     for (let y = 0; y < 8; y++) {
       for (let x = 0; x < 8; x++) {
-        // Get candy types that would not create a match
         const invalidTypes = new Set<number>();
-
         // Check horizontal
-        if (x >= 2 && board[y][x - 1] === board[y][x - 2]) {
-          invalidTypes.add(board[y][x - 1]);
-        }
-        if (x >= 1 && x < 7 && board[y][x - 1] === board[y][x + 1]) {
-          invalidTypes.add(board[y][x - 1]);
-        }
-
+        if (x >= 2 && board[y][x - 1] === board[y][x - 2]) invalidTypes.add(board[y][x - 1]);
         // Check vertical
-        if (y >= 2 && board[y - 1][x] === board[y - 2][x]) {
-          invalidTypes.add(board[y - 1][x]);
-        }
-        if (y >= 1 && y < 7 && board[y - 1][x] === board[y + 1][x]) {
-          invalidTypes.add(board[y - 1][x]);
-        }
+        if (y >= 2 && board[y - 1][x] === board[y - 2][x]) invalidTypes.add(board[y - 1][x]);
 
-        // Choose a valid candy type
         let validTypes = [1, 2, 3, 4, 5].filter(t => !invalidTypes.has(t));
-
-        // If no valid types (shouldn't happen), just pick a different type than neighbors
-        if (validTypes.length === 0) {
-          validTypes = [1, 2, 3, 4, 5];
-        }
-
+        if (validTypes.length === 0) validTypes = [1, 2, 3, 4, 5];
         board[y][x] = validTypes[Math.floor(Math.random() * validTypes.length)];
       }
     }
-
     return board;
   };
 
@@ -334,9 +269,7 @@ const Home: NextPage = () => {
     // Initialize the match sound
     if (typeof window !== "undefined") {
       matchSoundRef.current = new Audio("/match.mp3");
-
-      // Load transaction hashes from localStorage on initialization
-      fetchTxHashes();
+      // No need to fetch hashes on load anymore
     }
 
     // Original initialization code
@@ -366,7 +299,7 @@ const Home: NextPage = () => {
         document.head.removeChild(styleElement);
       }
     };
-  }, [initializeBoard, fetchTxHashes]);
+  }, [initializeBoard]);
 
   // Forward declaration of the refillBoard function
   let realRefillBoard: (board: number[][], checkForChainMatches?: boolean) => void;
@@ -399,61 +332,31 @@ const Home: NextPage = () => {
     console.log("Checking for matches in board");
     const foundMatches: { x: number; y: number; type: number }[] = [];
 
-    // Check horizontal matches (3+ in a row)
+    // Check horizontal matches (3+)
     for (let y = 0; y < 8; y++) {
       for (let x = 0; x < 6; x++) {
         const type = board[y][x];
         if (type !== 0 && type === board[y][x + 1] && type === board[y][x + 2]) {
-          // Found at least 3 in a row
           let matchLength = 3;
-          // Check if there are more than 3 in a row
-          for (let i = 3; x + i < 8; i++) {
-            if (board[y][x + i] === type) {
-              matchLength++;
-            } else {
-              break;
-            }
+          while (x + matchLength < 8 && board[y][x + matchLength] === type) {
+            matchLength++;
           }
-
-          // Add all matches to the array
-          for (let i = 0; i < matchLength; i++) {
-            foundMatches.push({ x: x + i, y, type });
-          }
-
-          // Log the horizontal match found
-          console.log(`Found horizontal match at (${x},${y}) of type ${type} with length ${matchLength}`);
-
-          // Skip the matched candies
+          for (let i = 0; i < matchLength; i++) foundMatches.push({ x: x + i, y, type });
           x += matchLength - 1;
         }
       }
     }
 
-    // Check vertical matches (3+ in a column)
+    // Check vertical matches (3+)
     for (let x = 0; x < 8; x++) {
       for (let y = 0; y < 6; y++) {
         const type = board[y][x];
         if (type !== 0 && type === board[y + 1][x] && type === board[y + 2][x]) {
-          // Found at least 3 in a column
           let matchLength = 3;
-          // Check if there are more than 3 in a column
-          for (let i = 3; y + i < 8; i++) {
-            if (board[y + i][x] === type) {
-              matchLength++;
-            } else {
-              break;
-            }
+          while (y + matchLength < 8 && board[y + matchLength][x] === type) {
+            matchLength++;
           }
-
-          // Add all matches to the array
-          for (let i = 0; i < matchLength; i++) {
-            foundMatches.push({ x, y: y + i, type });
-          }
-
-          // Log the vertical match found
-          console.log(`Found vertical match at (${x},${y}) of type ${type} with length ${matchLength}`);
-
-          // Skip the matched candies
+          for (let i = 0; i < matchLength; i++) foundMatches.push({ x, y: y + i, type });
           y += matchLength - 1;
         }
       }
@@ -528,60 +431,60 @@ const Home: NextPage = () => {
     setComboCounter(0);
     setScoreMultiplier(1);
     setIsDrawerOpen(false);
-    setTxHashes([]); // Clear transaction hashes state
-    setTxCount(0);
+    setTxHashes([]); // Clear displayed hashes
+    setPendingTxCount(0); // Reset pending count
+    setTxCount(0); // Reset optimistic count
+    // No need to clear localStorage hashes here anymore
+  }, [initializeBoard]);
 
-    // Clear transaction hashes from localStorage
-    clearTxHashesFromLocalStorage();
-  }, [initializeBoard, clearTxHashesFromLocalStorage]);
+  // Helper function to POST matches to the relayer API
+  const postMatchesToRelayer = useCallback(
+    async (matchesToPost: { x: number; y: number; type: number }[]) => {
+      if (!address) {
+        console.warn("Wallet not connected, skipping relayer call.");
+        setGameStatus("Connect wallet to save matches!");
+        return;
+      }
 
-  // Helper function to process transactions in batches without blocking the UI
-  const processBatchTransactions = async (matches: { x: number; y: number; type: number }[], playerAddress: string) => {
-    console.log(`Processing ${matches.length} matches with connected wallet ${playerAddress}`);
+      console.log(`Posting ${matchesToPost.length} matches to relayer for address ${address}...`);
 
-    // Process matches in batches to avoid overwhelming the relayer
-    const batchSize = 5;
-    for (let i = 0; i < matches.length; i += batchSize) {
-      const batch = matches.slice(i, i + batchSize);
+      // Post each match individually (backend handles batching)
+      for (const match of matchesToPost) {
+        try {
+          const response = await fetch("/api/relayer/candymatch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              x: match.x,
+              y: match.y,
+              candyType: match.type,
+              // playerAddress: address // Backend doesn't seem to use this anymore
+            }),
+          });
 
-      // Process batch in parallel
-      await Promise.all(
-        batch.map(async match => {
-          try {
-            const response = await fetch("/api/relayer/candymatch", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                x: match.x,
-                y: match.y,
-                candyType: match.type,
-                playerAddress: playerAddress, // Add player address to transaction
-              }),
-            });
-
-            if (response.ok) {
-              const data = await response.json();
-              console.log("Response from relayer:", data);
-
-              // Save the actual transaction hash from the blockchain
-              if (data.hash) {
-                console.log("Saving blockchain transaction hash:", data.hash);
-                saveTxHashToLocalStorage(data.hash);
-              } else {
-                console.warn("No transaction hash received from relayer");
-              }
-            } else {
-              console.error("Error response from relayer:", await response.text());
+          if (response.ok) {
+            const data = await response.json();
+            console.log("Relayer response:", data.message);
+            // Update pending count based on the message (extract number)
+            const queueSizeMatch = data.message?.match(/Current queue size: (\d+)/);
+            if (queueSizeMatch && queueSizeMatch[1]) {
+              setPendingTxCount(parseInt(queueSizeMatch[1], 10));
             }
-          } catch (error) {
-            console.error("Error processing match:", error);
+          } else {
+            console.error("Error response from relayer:", await response.text());
+            // Handle error - maybe show a status message?
+            setGameStatus("Error submitting match to relayer.");
           }
-        }),
-      );
-    }
-  };
+        } catch (error) {
+          console.error("Error posting match to relayer:", error);
+          setGameStatus("Network error submitting match.");
+        }
+        // Add a small delay between posts if needed to avoid rate limits?
+        // await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    },
+    [address], // Dependency on address
+  );
 
   // Refill the board with new candies without creating matches (forward declaration)
   const refillBoard = useCallback((board: number[][], checkForChainMatches = true) => {
@@ -642,17 +545,8 @@ const Home: NextPage = () => {
       // Update transaction count optimistically based on number of matches
       setTxCount(prev => prev + chainMatches.length);
 
-      // Process transactions if wallet is connected
-      if (address) {
-        // Process transactions immediately without setTimeout
-        processBatchTransactions(chainMatches, address)
-          .then(() => {
-            console.log(`Processed ${chainMatches.length} chain reaction transactions`);
-          })
-          .catch(error => {
-            console.error("Error processing chain reaction transactions:", error);
-          });
-      }
+      // Post chain matches to the relayer
+      postMatchesToRelayer(chainMatches);
 
       // Log debug info
       console.log(`CHAIN REACTION #${newComboCounter}: ${chainMatches.length} matches, multiplier: ${scoreMultiplier}`);
@@ -677,7 +571,7 @@ const Home: NextPage = () => {
       comboCounter,
       scoreMultiplier,
       address,
-      processBatchTransactions,
+      postMatchesToRelayer,
       debouncedRefill,
       setGameBoard,
       setMatches,
@@ -780,105 +674,7 @@ const Home: NextPage = () => {
     [score, highScore, address, checkForMatchesInBoard, processChainMatch, updateHighScoreOnChain],
   );
 
-  // Assign the implementation to our forward declaration
-  realRefillBoard = realRefillBoardImpl;
-
-  // Process matches - forward declaration
-  const processMatches = useCallback(async () => {
-    return false;
-  }, []);
-
-  // Real implementation of processMatches with dependencies
-  const realProcessMatches = useCallback(async () => {
-    const currentMatches = checkForMatches();
-
-    if (currentMatches.length > 0) {
-      // Play match sound
-      playMatchSound();
-
-      // Start a new combo sequence when player initiates a match
-      setComboCounter(1);
-      setMatches(currentMatches);
-      setGameStatus(`Found ${currentMatches.length} matches! Processing...`);
-
-      // Update the board immediately
-      const newBoard = gameBoard.map(row => [...row]); // Ensure deep clone
-      currentMatches.forEach(match => {
-        newBoard[match.y][match.x] = 0;
-      });
-      setGameBoard(newBoard);
-
-      // Calculate score with multiplier
-      const basePoints = currentMatches.length * 10;
-      const pointsWithMultiplier = Math.floor(basePoints * scoreMultiplier);
-      const newScore = score + pointsWithMultiplier;
-      setScore(newScore);
-
-      // Update transaction count optimistically
-      setTxCount(prev => prev + currentMatches.length);
-
-      // Update high score if needed
-      if (newScore > highScore) {
-        setHighScore(newScore);
-        // Save to localStorage
-        if (typeof window !== "undefined") {
-          const storageKey = address ? `candyCrushHighScore-${address}` : "candyCrushHighScore";
-          localStorage.setItem(storageKey, newScore.toString());
-          console.log(`Saved high score ${newScore} to localStorage with key ${storageKey}`);
-        }
-
-        // Update high score on blockchain if user is connected
-        if (address) {
-          updateHighScoreOnChain(newScore);
-        }
-      }
-
-      // Process matches in the background
-      if (address) {
-        // Process transactions in the background without blocking the UI
-        setTimeout(() => {
-          processBatchTransactions(currentMatches, address);
-        }, 0);
-      } else {
-        setGameStatus("Connect your wallet to record matches on the blockchain!");
-      }
-
-      // Log the initial match for debugging
-      console.log(`Initial match: ${currentMatches.length} matches. Starting chain reaction...`);
-
-      // Refill the board with a slight delay to allow UI to update
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          console.log("Refilling board after initial match");
-          // Use debounced refill to avoid race conditions
-          debouncedRefill(newBoard, true);
-        }, 600);
-      });
-
-      return true;
-    }
-
-    return false;
-  }, [
-    checkForMatches,
-    gameBoard,
-    score,
-    highScore,
-    address,
-    scoreMultiplier,
-    updateHighScoreOnChain,
-    debouncedRefill,
-    setMatches,
-    setGameBoard,
-    setScore,
-    setHighScore,
-    setGameStatus,
-    setComboCounter,
-    playMatchSound,
-  ]);
-
-  // Update the real implementation of processMatches
-  Object.assign(processMatches, { current: realProcessMatches });
+  realRefillBoard = realRefillBoardImpl; // Assign implementation
 
   // Handle candy selection
   const handleCandyClick = async (x: number, y: number) => {
@@ -962,14 +758,10 @@ const Home: NextPage = () => {
             }
           }
 
-          // Process transactions if wallet is connected
-          if (address) {
-            setTimeout(() => {
-              processBatchTransactions(boardMatches, address);
-            }, 0);
-          }
+          // Post these initial matches to the relayer
+          postMatchesToRelayer(boardMatches);
 
-          // Trigger refill after a delay
+          // Trigger refill after a delay for animations/visibility
           setTimeout(() => {
             debouncedRefill(updatedBoard, true);
           }, 600);
@@ -1019,12 +811,12 @@ const Home: NextPage = () => {
     }
   }, [playerScore, highScore, address]);
 
-  // Fetch transaction hashes when drawer is opened
+  // Fetch transaction hashes when the drawer is opened
   useEffect(() => {
     if (isDrawerOpen) {
-      fetchTxHashes();
+      fetchTxHashesFromApi();
     }
-  }, [fetchTxHashes, isDrawerOpen]);
+  }, [isDrawerOpen, fetchTxHashesFromApi]);
 
   return (
     <>
@@ -1040,7 +832,6 @@ const Home: NextPage = () => {
                   className="btn btn-sm btn-accent btn-outline"
                   onClick={() => {
                     setIsDrawerOpen(true);
-                    fetchTxHashes();
                   }}
                 >
                   <svg
@@ -1060,11 +851,11 @@ const Home: NextPage = () => {
                   History
                 </button>
               </div>
-              <p className="px-3 mb-4 text-sm">Match 3 or more creatures!</p>
+              <p className="px-3 mb-4 text-sm">{gameStatus}</p>
 
               <div className="px-3 mb-4 shadow stats">
                 <div className="stat">
-                  <div className="stat-title">Score (Tx)</div>
+                  <div className="stat-title">Score</div>
                   <div className="text-base md:text-2xl stat-value">{score || 0}</div>
                 </div>
 
@@ -1074,15 +865,16 @@ const Home: NextPage = () => {
                 </div>
 
                 <div className="stat">
-                  <div className="stat-title">Transactions</div>
+                  <div className="stat-title">Matches Sent</div>
                   <div className="text-base md:text-2xl stat-value">{txCount || 0}</div>
+                  <div className="text-xs stat-desc text-info">~{pendingTxCount} pending</div>
                 </div>
 
                 {scoreMultiplier > 1 && (
                   <div className="stat">
-                    <div className="stat-title text-accent">Combo Multiplier</div>
+                    <div className="stat-title text-accent">Combo</div>
                     <div className="text-base md:text-2xl stat-value text-accent">×{scoreMultiplier.toFixed(1)}</div>
-                    <div className="stat-desc">{comboCounter} consecutive matches</div>
+                    <div className="stat-desc">{comboCounter} chain</div>
                   </div>
                 )}
               </div>
@@ -1095,9 +887,9 @@ const Home: NextPage = () => {
                         key={`${x}-${y}`}
                         className={`aspect-square rounded-sm md:rounded-md flex items-center justify-center cursor-pointer transition-all transform
                                   ${selectedCandy && selectedCandy.x === x && selectedCandy.y === y ? "ring-4 ring-purple-300 scale-110" : ""}
-                                ${matches.some(m => m.x === x && m.y === y) ? "animate-pulse" : ""}`}
+                                  ${matches.some(m => m.x === x && m.y === y) ? "animate-pulse bg-purple-400" : ""}`}
                         style={{
-                          backgroundColor: candy === 0 ? "transparent" : "#F4E7EA", // light purple background
+                          backgroundColor: candy === 0 ? "transparent" : "#F4E7EA",
                           opacity: candy === 0 ? 0.2 : 1,
                         }}
                         onClick={() => handleCandyClick(x, y)}
@@ -1107,7 +899,7 @@ const Home: NextPage = () => {
                             <img
                               src={CANDY_IMAGES[candy as keyof typeof CANDY_IMAGES]}
                               alt={CANDY_NAMES[candy as keyof typeof CANDY_NAMES]}
-                              className="object-cover w-full h-full p-[6px] rounded-md md:p-3"
+                              className="object-contain w-full h-full p-[6px] md:p-2"
                             />
                           </div>
                         )}
@@ -1120,6 +912,9 @@ const Home: NextPage = () => {
               <div className="justify-center mt-6 card-actions">
                 <button className="btn btn-primary btn-lg" onClick={resetGame}>
                   Reset Game
+                </button>
+                <button className="ml-4 btn btn-secondary btn-sm" onClick={resetHighScore}>
+                  Reset High Score (Local)
                 </button>
               </div>
             </div>
@@ -1143,6 +938,14 @@ const Home: NextPage = () => {
             </div>
             <div className="divider"></div>
 
+            {/* Pending Transactions Info */}
+            {pendingTxCount > 0 && (
+              <div className="p-3 mb-4 rounded-lg bg-info/10 text-info-content">
+                <p className="text-sm font-semibold">~{pendingTxCount} transactions pending in the next batch.</p>
+                <p className="text-xs">Hashes will appear below once processed by the relayer.</p>
+              </div>
+            )}
+
             {isLoadingHashes ? (
               <div className="flex flex-col items-center justify-center p-8">
                 <span className="loading loading-spinner loading-lg text-accent"></span>
@@ -1150,18 +953,18 @@ const Home: NextPage = () => {
               </div>
             ) : txHashes.length > 0 ? (
               <div className="space-y-2">
-                {/* <p className="mb-2 text-sm">Recent transactions: {txHashes.length}</p> */}
+                <p className="mb-2 text-sm text-base-content/80">Recent confirmed transactions: {txHashes.length}</p>
                 <div className="overflow-y-auto max-h-[70vh]">
                   {txHashes.map((hash, index) => (
                     <div key={index} className="pb-3 mb-3 border-b border-base-300">
-                      <div className="mb-1 text-xs">Transaction #{index + 1}</div>
+                      <div className="mb-1 text-xs text-base-content/60">Transaction #{txHashes.length - index}</div>
                       <a
                         href={`https://monad-testnet.socialscan.io/tx/${hash}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="block font-mono text-xs truncate link link-accent hover:text-clip"
+                        className="block font-mono text-sm break-all link link-accent hover:text-clip"
                       >
-                        {hash.slice(0, 14) + "..." + hash.slice(50)}
+                        {hash}
                       </a>
                     </div>
                   ))}
@@ -1183,8 +986,11 @@ const Home: NextPage = () => {
                     d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
                   />
                 </svg>
-                <p className="mt-4">No transactions recorded yet.</p>
-                <p className="mt-2 text-sm">Make some matches to see your blockchain transactions!</p>
+                <p className="mt-4">No confirmed transaction hashes found.</p>
+                {pendingTxCount === 0 && (
+                  <p className="mt-2 text-sm">Make some matches to see your blockchain transactions!</p>
+                )}
+                {pendingTxCount > 0 && <p className="mt-2 text-sm">Check back shortly for confirmed transactions.</p>}
               </div>
             )}
           </div>

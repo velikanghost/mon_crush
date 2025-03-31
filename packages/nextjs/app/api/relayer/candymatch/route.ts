@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createPublicClient, createWalletClient, http } from "viem";
+import { createPublicClient, createWalletClient, http, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import deployedContracts from "~~/contracts/deployedContracts";
 import { monadTestnet } from "~~/scaffold.config";
@@ -66,194 +66,186 @@ const PRIVATE_KEYS = [
   process.env.RELAYER_PRIVATE_KEY_50,
 ].filter((key): key is string => !!key);
 
-// Contract details - Get the CandyCrushGame contract address from deployedContracts
-const CONTRACT_ADDRESS = deployedContracts[10143].CandyCrushGame.address;
+if (PRIVATE_KEYS.length === 0) {
+  console.error("No relayer private keys found in environment variables!");
+}
 
-// Queue and wallet tracking
-type QueuedTx = {
-  x: number;
-  y: number;
-  candyType: number;
-};
-const txQueue: QueuedTx[] = [];
-const busyKeys = new Set<string>();
-let isCheckingQueue = false;
+// Contract details
+const CONTRACT_ADDRESS = deployedContracts[monadTestnet.id]?.CandyCrushGame?.address;
+if (!CONTRACT_ADDRESS) {
+  throw new Error("CandyCrushGame contract address not found for the target network.");
+}
 
-// Store transaction hashes in memory
-// We'll limit the size to avoid memory issues
+// Batch settings
+const BATCH_SIZE = 20; // Number of transactions to send in a batch
+const batchQueue: { x: number; y: number; candyType: number }[] = [];
+let isProcessingBatch = false;
+let currentKeyIndex = 0; // Cycle through keys for batches
+
+// Store transaction hashes (optional, could be replaced by frontend handling)
 const MAX_STORED_HASHES = 100;
-// We don't need to export these anymore since we're using localStorage on the client
 const txHashes: string[] = [];
-
-// This function is still useful for logging, but we don't need to export it
 const storeTxHash = (hash: string) => {
-  // We'll still keep this for local logging purposes
   txHashes.unshift(hash);
   if (txHashes.length > MAX_STORED_HASHES) {
     txHashes.pop();
   }
 };
 
-// We don't need the clearTxHashes function anymore
-// But we'll keep this for backwards compatibility
-const clearTxHashes = () => {
-  txHashes.length = 0;
-};
+async function processBatchTransactions(batch: { x: number; y: number; candyType: number }[]) {
+  if (PRIVATE_KEYS.length === 0) {
+    console.error("No private keys available to process batch.");
+    return [];
+  }
 
-async function getAvailableKey(): Promise<string | undefined> {
-  const key = PRIVATE_KEYS.find(key => !busyKeys.has(key));
-  console.log("Available keys:", PRIVATE_KEYS.filter(key => !busyKeys.has(key)).length);
-  return key;
-}
+  const privateKey = PRIVATE_KEYS[currentKeyIndex];
+  currentKeyIndex = (currentKeyIndex + 1) % PRIVATE_KEYS.length; // Move to the next key
 
-async function processSingleTransaction(privateKey: string, tx: QueuedTx) {
   const startTime = Date.now();
+  isProcessingBatch = true;
+  let hashes: string[] = [];
+
   try {
-    // Execute transaction and get the hash
+    console.log(`Processing batch of ${batch.length} transactions using key index ${currentKeyIndex}...`);
+
     const formattedPrivateKey = privateKey.startsWith("0x")
       ? (privateKey as `0x${string}`)
       : (`0x${privateKey}` as `0x${string}`);
     const account = privateKeyToAccount(formattedPrivateKey);
-    const wallet = createWalletClient({
+    const walletClient = createWalletClient({
       account,
       chain: monadTestnet,
       transport,
     });
+    const walletAddress = account.address;
 
-    const hash = await wallet.writeContract({
-      address: CONTRACT_ADDRESS,
-      abi: CONTRACT_ABI,
-      functionName: "recordMatch",
-      args: [tx.x, tx.y, tx.candyType],
-      chain: monadTestnet,
+    // Get the current nonce for the account
+    const nonce = await publicClient.getTransactionCount({ address: walletAddress });
+    console.log(`Starting nonce for batch: ${nonce}`);
+
+    const transactionPromises = batch.map(async (tx, index) => {
+      const currentNonce = nonce + index;
+      console.log(`Sending tx ${index + 1}/${batch.length} with nonce ${currentNonce}`);
+      try {
+        const hash = await walletClient.writeContract({
+          address: CONTRACT_ADDRESS,
+          abi: CONTRACT_ABI,
+          functionName: "recordMatch",
+          args: [tx.x, tx.y, tx.candyType],
+          chain: monadTestnet,
+          nonce: currentNonce,
+          // Consider adding gas estimations or fixed values if needed
+          // gas: BigInt(100000), // Example fixed gas limit
+          // maxFeePerGas: parseGwei('20'), // Example EIP-1559 fees
+          // maxPriorityFeePerGas: parseGwei('1'),
+        });
+        console.log(`Tx ${index + 1} sent, hash: ${hash}`);
+        storeTxHash(hash); // Store hash locally
+        return hash;
+      } catch (txError) {
+        console.error(`Error sending tx ${index + 1} (nonce ${currentNonce}):`, txError);
+        return null; // Indicate failure for this specific transaction
+      }
     });
 
-    // Store the transaction hash locally for logging
-    storeTxHash(hash);
+    // Wait for all transactions in the batch to be sent
+    const results = await Promise.all(transactionPromises);
+    // Filter out failed transactions (null values) and ensure correct type
+    hashes = results.filter((hash): hash is `0x${string}` => hash !== null);
 
-    console.log("Candy match transaction sent:", hash, "waiting for confirmation...");
+    console.log(`Batch sent. Hashes: ${hashes.join(", ")}`);
 
-    // Wait for transaction to be confirmed
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    console.log("Transaction confirmed in block:", receipt.blockNumber);
-
-    // Return the hash for the response
-    return hash;
+    // Optional: Wait for confirmations (can significantly increase response time)
+    /*
+    if (hashes.length > 0) {
+      console.log("Waiting for batch confirmations...");
+      const receipts = await Promise.all(hashes.map(hash => publicClient.waitForTransactionReceipt({ hash })));
+      console.log("Batch confirmed in blocks:", receipts.map(r => r.blockNumber).join(", "));
+    }
+    */
   } catch (error) {
-    console.error("Error processing tx:", error);
-    return null;
+    console.error("Error processing batch transactions:", error);
+    // Handle batch-level errors (e.g., nonce fetching failed)
   } finally {
-    busyKeys.delete(privateKey);
-    console.log("Freed key:", privateKey.slice(-4), "Time taken:", Date.now() - startTime, "ms");
+    isProcessingBatch = false;
+    console.log(`Batch processing finished. Time taken: ${Date.now() - startTime}ms`);
+    // Trigger processing of the next batch if the queue is not empty
+    triggerBatchProcessing();
   }
+  return hashes; // Return the hashes of successfully sent transactions
 }
 
-async function processQueue() {
-  console.log({ txQueue, txHashes });
-  if (isCheckingQueue) return;
-  isCheckingQueue = true;
-
-  while (txQueue.length > 0) {
-    const privateKey = await getAvailableKey();
-    if (!privateKey) {
-      // If no keys available, wait 100ms and check again
-      await new Promise(resolve => setTimeout(resolve, 100));
-      continue;
-    }
-
-    console.log("Using key:", privateKey.slice(-4), "Queue length:", txQueue.length);
-    busyKeys.add(privateKey);
-    const tx = txQueue.shift();
-    if (tx) {
-      // Process transaction without waiting for it
-      processSingleTransaction(privateKey, tx);
-    } else {
-      busyKeys.delete(privateKey);
-    }
+function triggerBatchProcessing() {
+  // Only start a new batch if not already processing and queue has enough items
+  if (!isProcessingBatch && batchQueue.length >= BATCH_SIZE) {
+    const batchToSend = batchQueue.splice(0, BATCH_SIZE);
+    processBatchTransactions(batchToSend); // Process async, don't await here
+  } else if (!isProcessingBatch && batchQueue.length > 0) {
+    // Optional: Process remaining items if fewer than BATCH_SIZE?
+    // Or wait for more items to accumulate. Current logic waits.
+    console.log(`Queue has ${batchQueue.length} items, waiting for ${BATCH_SIZE} to form a batch.`);
   }
-
-  isCheckingQueue = false;
 }
 
 export async function GET() {
-  try {
-    // Return the stored transaction hashes (for backwards compatibility)
-    return NextResponse.json({
-      hashes: txHashes,
-      count: txHashes.length,
-    });
-  } catch (error) {
-    console.error("Error retrieving transaction hashes:", error);
-    return NextResponse.json({ error: "Failed to retrieve transaction hashes" }, { status: 500 });
-  }
+  // Returns locally stored hashes (consider if still needed)
+  return NextResponse.json({
+    hashes: txHashes,
+    count: txHashes.length,
+  });
 }
 
 export async function POST(req: Request) {
   try {
     if (PRIVATE_KEYS.length === 0) {
-      return NextResponse.json({ error: "No private keys configured" }, { status: 500 });
+      return NextResponse.json({ error: "No relayer keys configured" }, { status: 500 });
+    }
+    if (!CONTRACT_ADDRESS) {
+      return NextResponse.json({ error: "Contract address not configured" }, { status: 500 });
     }
 
-    // Parse the request body
     const body = await req.json();
     const { x, y, candyType } = body;
 
-    // Validate input data
-    if (typeof x !== "number" || typeof y !== "number" || typeof candyType !== "number") {
+    // Basic validation
+    if (
+      typeof x !== "number" ||
+      typeof y !== "number" ||
+      typeof candyType !== "number" ||
+      x < 0 ||
+      x >= 8 ||
+      y < 0 ||
+      y >= 8 ||
+      candyType <= 0 ||
+      candyType > 5
+    ) {
       return NextResponse.json({ error: "Invalid input parameters" }, { status: 400 });
     }
 
-    if (x < 0 || x >= 8 || y < 0 || y >= 8) {
-      return NextResponse.json({ error: "Coordinates out of bounds" }, { status: 400 });
-    }
+    // Add to batch queue
+    batchQueue.push({ x, y, candyType });
+    console.log(`Added to batch queue: {${x}, ${y}, ${candyType}}. Queue size: ${batchQueue.length}`);
 
-    if (candyType <= 0 || candyType > 5) {
-      return NextResponse.json({ error: "Invalid candy type" }, { status: 400 });
-    }
+    // Trigger batch processing if conditions are met
+    triggerBatchProcessing();
 
-    // Add transaction to queue
-    txQueue.push({ x, y, candyType });
+    // --- Response Modification ---
+    // Since batching is async, we can't return the *final* hashes immediately.
+    // Option 1: Return success immediately, frontend polls/waits.
+    // Option 2: (More complex) Hold the request open until the batch containing this tx is processed.
+    // Option 3: Return the current queue status.
 
-    // Try to process queue
-    processQueue();
-
-    // Get an available key
-    const privateKey = await getAvailableKey();
-    if (!privateKey) {
-      return NextResponse.json({ error: "No available relayer keys" }, { status: 503 });
-    }
-
-    // Process the transaction immediately to get the hash
-    busyKeys.add(privateKey);
-    const formattedPrivateKey = privateKey.startsWith("0x")
-      ? (privateKey as `0x${string}`)
-      : (`0x${privateKey}` as `0x${string}`);
-    const account = privateKeyToAccount(formattedPrivateKey);
-    const wallet = createWalletClient({
-      account,
-      chain: monadTestnet,
-      transport,
-    });
-
-    const hash = await wallet.writeContract({
-      address: CONTRACT_ADDRESS,
-      abi: CONTRACT_ABI,
-      functionName: "recordMatch",
-      args: [x, y, candyType],
-      chain: monadTestnet,
-    });
-
-    // Store the hash for logging
-    storeTxHash(hash);
-
-    // Return the actual transaction hash
+    // Let's go with Option 1: Acknowledge receipt.
     return NextResponse.json({
       success: true,
-      message: "Match queued for processing",
-      hash: hash, // Return the actual transaction hash
+      message: `Match added to batch queue. Current queue size: ${batchQueue.length}`,
+      // Cannot return specific hash here as it's processed async in a batch
     });
   } catch (error) {
-    console.error("Error in candy match route:", error);
-    return NextResponse.json({ error: "Failed to record candy match" }, { status: 500 });
+    console.error("Error in candy match POST route:", error);
+    return NextResponse.json({ error: "Failed to process candy match" }, { status: 500 });
   }
 }
+
+// Optional: Add a mechanism to process remaining items on shutdown or periodically
+// cleanup function, e.g. process.on('SIGTERM', async () => { ... });
