@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createPublicClient, createWalletClient, http, parseEther } from "viem";
+import { createPublicClient, createWalletClient, formatEther, http, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import deployedContracts from "~~/contracts/deployedContracts";
 import { monadTestnet } from "~~/scaffold.config";
@@ -78,12 +78,13 @@ if (!CONTRACT_ADDRESS) {
 
 // Batch settings
 const BATCH_SIZE = 20; // Number of transactions to send in a batch
-const batchQueue: { x: number; y: number; candyType: number }[] = [];
+const batchQueue: { x: number; y: number; type: number }[] = [];
 let isProcessingBatch = false;
 let currentKeyIndex = 0; // Cycle through keys for batches
+let lastBatchProcessTime = Date.now(); // Track when we last processed a batch
 
 // Store transaction hashes (optional, could be replaced by frontend handling)
-const MAX_STORED_HASHES = 100;
+const MAX_STORED_HASHES = 200;
 const txHashes: string[] = [];
 const storeTxHash = (hash: string) => {
   txHashes.unshift(hash);
@@ -92,106 +93,144 @@ const storeTxHash = (hash: string) => {
   }
 };
 
-async function processBatchTransactions(batch: { x: number; y: number; candyType: number }[]) {
+// Type definition for a single match
+type Match = { x: number; y: number; type: number };
+
+async function processBatchTransactions(batch: { x: number; y: number; type: number }[]) {
   if (PRIVATE_KEYS.length === 0) {
     console.error("No private keys available to process batch.");
     return [];
   }
 
-  const privateKey = PRIVATE_KEYS[currentKeyIndex];
-  currentKeyIndex = (currentKeyIndex + 1) % PRIVATE_KEYS.length; // Move to the next key
-
-  const startTime = Date.now();
   isProcessingBatch = true;
+  const startTime = Date.now();
   let hashes: string[] = [];
 
-  try {
-    console.log(`Processing batch of ${batch.length} transactions using key index ${currentKeyIndex}...`);
+  // Try each key until we find one with enough gas
+  let keysTried = 0;
+  let successfulKey = false;
 
+  while (keysTried < PRIVATE_KEYS.length && !successfulKey) {
+    const privateKey = PRIVATE_KEYS[currentKeyIndex];
     const formattedPrivateKey = privateKey.startsWith("0x")
       ? (privateKey as `0x${string}`)
       : (`0x${privateKey}` as `0x${string}`);
     const account = privateKeyToAccount(formattedPrivateKey);
-    const walletClient = createWalletClient({
-      account,
-      chain: monadTestnet,
-      transport,
-    });
     const walletAddress = account.address;
 
-    // Get the current nonce for the account
-    const nonce = await publicClient.getTransactionCount({ address: walletAddress });
-    console.log(`Starting nonce for batch: ${nonce}`);
+    // Check gas balance before trying
+    try {
+      const balance = await publicClient.getBalance({ address: walletAddress });
+      // Minimum balance required (0.01 MONAD should be enough for a batch)
+      const minBalance = parseEther("0.01");
 
-    const transactionPromises = batch.map(async (tx, index) => {
-      const currentNonce = nonce + index;
-      console.log(`Sending tx ${index + 1}/${batch.length} with nonce ${currentNonce}`);
-      try {
-        const hash = await walletClient.writeContract({
-          address: CONTRACT_ADDRESS,
-          abi: CONTRACT_ABI,
-          functionName: "recordMatch",
-          args: [tx.x, tx.y, tx.candyType],
-          chain: monadTestnet,
-          nonce: currentNonce,
-          // Consider adding gas estimations or fixed values if needed
-          // gas: BigInt(100000), // Example fixed gas limit
-          // maxFeePerGas: parseGwei('20'), // Example EIP-1559 fees
-          // maxPriorityFeePerGas: parseGwei('1'),
-        });
-        console.log(`Tx ${index + 1} sent, hash: ${hash}`);
-        storeTxHash(hash); // Store hash locally
-        return hash;
-      } catch (txError) {
-        console.error(`Error sending tx ${index + 1} (nonce ${currentNonce}):`, txError);
-        return null; // Indicate failure for this specific transaction
+      if (balance < minBalance) {
+        console.warn(`Key ${currentKeyIndex} has low balance: ${formatEther(balance)} MONAD. Skipping...`);
+        // Move to next key
+        currentKeyIndex = (currentKeyIndex + 1) % PRIVATE_KEYS.length;
+        keysTried++;
+        continue;
       }
-    });
 
-    // Wait for all transactions in the batch to be sent
-    const results = await Promise.all(transactionPromises);
-    // Filter out failed transactions (null values) and ensure correct type
-    hashes = results.filter((hash): hash is `0x${string}` => hash !== null);
+      console.log(`Using key ${currentKeyIndex} with balance: ${formatEther(balance)} MONAD`);
+      successfulKey = true;
 
-    console.log(`Batch sent. Hashes: ${hashes.join(", ")}`);
+      const walletClient = createWalletClient({
+        account,
+        chain: monadTestnet,
+        transport,
+      });
 
-    // Optional: Wait for confirmations (can significantly increase response time)
-    /*
-    if (hashes.length > 0) {
-      console.log("Waiting for batch confirmations...");
-      const receipts = await Promise.all(hashes.map(hash => publicClient.waitForTransactionReceipt({ hash })));
-      console.log("Batch confirmed in blocks:", receipts.map(r => r.blockNumber).join(", "));
+      // Get the current nonce for the account
+      const nonce = await publicClient.getTransactionCount({ address: walletAddress });
+      console.log(`Starting nonce for batch: ${nonce}`);
+
+      const transactionPromises = batch.map(async (tx, index) => {
+        const currentNonce = nonce + index;
+        console.log(`Sending tx ${index + 1}/${batch.length} with nonce ${currentNonce}`);
+        try {
+          const hash = await walletClient.writeContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: "recordMatch",
+            args: [tx.x, tx.y, tx.type],
+            chain: monadTestnet,
+            nonce: currentNonce,
+            // Adding gas limit to avoid reverts
+            gas: BigInt(100000),
+          });
+          console.log(`Tx ${index + 1} sent, hash: ${hash}`);
+          storeTxHash(hash); // Store hash locally
+          return hash;
+        } catch (txError) {
+          console.error(`Error sending tx ${index + 1} (nonce ${currentNonce}):`, txError);
+          return null; // Indicate failure for this specific transaction
+        }
+      });
+
+      // Wait for all transactions in the batch to be sent
+      const results = await Promise.all(transactionPromises);
+      // Filter out failed transactions (null values) and ensure correct type
+      hashes = results.filter((hash): hash is `0x${string}` => hash !== null);
+
+      console.log(`Batch sent. Hashes: ${hashes.join(", ")}`);
+    } catch (error) {
+      console.error(`Error with key ${currentKeyIndex}:`, error);
+      currentKeyIndex = (currentKeyIndex + 1) % PRIVATE_KEYS.length;
+      keysTried++;
     }
-    */
-  } catch (error) {
-    console.error("Error processing batch transactions:", error);
-    // Handle batch-level errors (e.g., nonce fetching failed)
-  } finally {
-    isProcessingBatch = false;
-    console.log(`Batch processing finished. Time taken: ${Date.now() - startTime}ms`);
-    // Trigger processing of the next batch if the queue is not empty
-    triggerBatchProcessing();
   }
+
+  // If we've tried all keys and none worked
+  if (!successfulKey) {
+    console.error("All keys have insufficient gas or other issues. Could not process batch.");
+  } else {
+    // Move to the next key for the next batch
+    currentKeyIndex = (currentKeyIndex + 1) % PRIVATE_KEYS.length;
+  }
+
+  isProcessingBatch = false;
+  console.log(`Batch processing finished. Time taken: ${Date.now() - startTime}ms`);
+  // Trigger processing of the next batch if the queue is not empty
+  triggerBatchProcessing();
+
   return hashes; // Return the hashes of successfully sent transactions
 }
 
 function triggerBatchProcessing() {
-  // Only start a new batch if not already processing and queue has enough items
-  if (!isProcessingBatch && batchQueue.length >= BATCH_SIZE) {
-    const batchToSend = batchQueue.splice(0, BATCH_SIZE);
+  const currentTime = Date.now();
+  // Process if queue has enough items OR it's been more than 60 seconds since last batch
+  if (
+    !isProcessingBatch &&
+    (batchQueue.length >= BATCH_SIZE || (batchQueue.length > 0 && currentTime - lastBatchProcessTime > 60000))
+  ) {
+    // Process either a full batch or whatever we have if it's been waiting too long
+    const batchSize = Math.min(batchQueue.length, BATCH_SIZE);
+    const batchToSend = batchQueue.splice(0, batchSize);
+    lastBatchProcessTime = currentTime; // Update the last batch time
     processBatchTransactions(batchToSend); // Process async, don't await here
   } else if (!isProcessingBatch && batchQueue.length > 0) {
-    // Optional: Process remaining items if fewer than BATCH_SIZE?
-    // Or wait for more items to accumulate. Current logic waits.
-    console.log(`Queue has ${batchQueue.length} items, waiting for ${BATCH_SIZE} to form a batch.`);
+    console.log(`Queue has ${batchQueue.length} items, waiting for ${BATCH_SIZE} to form a batch or timeout.`);
   }
 }
 
+// Add a periodic check to process partial batches
+let intervalId: NodeJS.Timeout | null = null;
+if (typeof setInterval !== "undefined") {
+  intervalId = setInterval(() => {
+    // Check if we have pending items that haven't been processed in a while
+    if (!isProcessingBatch && batchQueue.length > 0 && Date.now() - lastBatchProcessTime > 60000) {
+      console.log(`Processing partial batch of ${batchQueue.length} items due to timeout`);
+      triggerBatchProcessing();
+    }
+  }, 15000); // Check every 15 seconds
+}
+
 export async function GET() {
-  // Returns locally stored hashes (consider if still needed)
   return NextResponse.json({
     hashes: txHashes,
     count: txHashes.length,
+    pendingCount: batchQueue.length,
   });
 }
 
@@ -205,6 +244,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    console.log("Received match data:", body);
     const { x, y, candyType } = body;
 
     // Basic validation
@@ -213,17 +253,18 @@ export async function POST(req: Request) {
       typeof y !== "number" ||
       typeof candyType !== "number" ||
       x < 0 ||
-      x >= 8 ||
+      x >= 8 || // Assuming BOARD_SIZE is 8
       y < 0 ||
       y >= 8 ||
       candyType <= 0 ||
-      candyType > 5
+      candyType > 5 // Assuming max candy type is 5
     ) {
-      return NextResponse.json({ error: "Invalid input parameters" }, { status: 400 });
+      console.error("Invalid match data found in batch:", body);
+      return NextResponse.json({ error: "Invalid match data found in batch." }, { status: 400 });
     }
 
-    // Add to batch queue
-    batchQueue.push({ x, y, candyType });
+    // Add to batch queue - Using 'type' internally even though frontend sends as 'candyType'
+    batchQueue.push({ x, y, type: candyType });
     console.log(`Added to batch queue: {${x}, ${y}, ${candyType}}. Queue size: ${batchQueue.length}`);
 
     // Trigger batch processing if conditions are met
@@ -247,5 +288,15 @@ export async function POST(req: Request) {
   }
 }
 
-// Optional: Add a mechanism to process remaining items on shutdown or periodically
-// cleanup function, e.g. process.on('SIGTERM', async () => { ... });
+// Clean up interval on shutdown
+if (typeof process !== "undefined") {
+  process.on("SIGTERM", () => {
+    if (intervalId) clearInterval(intervalId);
+    // Process any remaining items in the queue
+    if (batchQueue.length > 0 && !isProcessingBatch) {
+      console.log(`Processing remaining ${batchQueue.length} items before shutdown`);
+      const batchToSend = batchQueue.splice(0, batchQueue.length);
+      processBatchTransactions(batchToSend);
+    }
+  });
+}

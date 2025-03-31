@@ -69,7 +69,11 @@ const Home: NextPage = () => {
       if (response.ok) {
         const data = await response.json();
         setTxHashes(data.hashes || []); // Update state with fetched hashes
-        // We don't get pending count from GET, maybe update based on last POST response?
+        // Update pending count from API response
+        if (data.pendingCount !== undefined) {
+          setPendingTxCount(data.pendingCount);
+          console.log(`Updated pending count: ${data.pendingCount}`);
+        }
         console.log(`Fetched ${data.hashes?.length || 0} hashes from backend.`);
       } else {
         console.error("Error fetching transaction hashes:", await response.text());
@@ -815,6 +819,14 @@ const Home: NextPage = () => {
   useEffect(() => {
     if (isDrawerOpen) {
       fetchTxHashesFromApi();
+
+      // Set up a refresh interval while the drawer is open
+      const intervalId = setInterval(() => {
+        fetchTxHashesFromApi();
+      }, 5000); // Refresh every 5 seconds
+
+      // Clean up interval when drawer closes
+      return () => clearInterval(intervalId);
     }
   }, [isDrawerOpen, fetchTxHashesFromApi]);
 
