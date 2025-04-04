@@ -267,71 +267,21 @@ export async function POST(req: Request) {
     batchQueue.push({ x, y, type: candyType });
     console.log(`Added to batch queue: {${x}, ${y}, ${candyType}}. Queue size: ${batchQueue.length}`);
 
-    // Check if we can send immediately (optimization for immediate feedback)
-    // Only attempt immediate processing if we have the right conditions
-    let immediateHash: string | null = null;
-
-    // Only try immediate processing if queue was empty before this request
-    // This prevents request blocking and ensures responsive UX
-    if (batchQueue.length === 1 && !isProcessingBatch && PRIVATE_KEYS.length > 0) {
-      try {
-        // Get current key
-        const privateKey = PRIVATE_KEYS[currentKeyIndex];
-        const formattedPrivateKey = privateKey.startsWith("0x")
-          ? (privateKey as `0x${string}`)
-          : (`0x${privateKey}` as `0x${string}`);
-        const account = privateKeyToAccount(formattedPrivateKey);
-
-        // Quick check if key has enough balance (fast check)
-        const balance = await publicClient.getBalance({ address: account.address });
-        const minBalance = parseEther("0.001"); // Lower threshold for single tx
-
-        if (balance >= minBalance) {
-          const walletClient = createWalletClient({
-            account,
-            chain: monadTestnet,
-            transport,
-          });
-
-          // Try to send this single transaction immediately
-          const hash = await walletClient.writeContract({
-            address: CONTRACT_ADDRESS,
-            abi: CONTRACT_ABI,
-            functionName: "recordMatch",
-            args: [x, y, candyType],
-            chain: monadTestnet,
-            gas: BigInt(100000),
-          });
-
-          // If successful, remove from queue and store hash
-          batchQueue.pop(); // Remove the item we just processed
-          storeTxHash(hash); // Store in server memory
-          immediateHash = hash; // Return to client
-          console.log(`Immediate processing successful, hash: ${hash}`);
-        }
-      } catch (immediateError) {
-        console.log("Immediate processing failed, falling back to batch mode:", immediateError);
-        // Continue with normal batch processing if immediate attempt fails
-      }
-    }
-
-    // Trigger batch processing for any remaining queue items
+    // Trigger batch processing if conditions are met
     triggerBatchProcessing();
 
-    // Response with immediate hash if available
-    if (immediateHash) {
-      return NextResponse.json({
-        success: true,
-        message: `Match processed immediately. Current queue size: ${batchQueue.length}`,
-        hash: immediateHash,
-      });
-    } else {
-      return NextResponse.json({
-        success: true,
-        message: `Match added to batch queue. Current queue size: ${batchQueue.length}`,
-        // No immediate hash, will be processed in batch
-      });
-    }
+    // --- Response Modification ---
+    // Since batching is async, we can't return the *final* hashes immediately.
+    // Option 1: Return success immediately, frontend polls/waits.
+    // Option 2: (More complex) Hold the request open until the batch containing this tx is processed.
+    // Option 3: Return the current queue status.
+
+    // Let's go with Option 1: Acknowledge receipt.
+    return NextResponse.json({
+      success: true,
+      message: `Match added to batch queue. Current queue size: ${batchQueue.length}`,
+      // Cannot return specific hash here as it's processed async in a batch
+    });
   } catch (error) {
     console.error("Error in candy match POST route:", error);
     return NextResponse.json({ error: "Failed to process candy match" }, { status: 500 });

@@ -58,7 +58,6 @@ export interface GameState {
 
   // API interaction
   fetchTxHashesFromApi: () => Promise<void>;
-  addTxHashToHistory: (hash: string) => void;
 
   // Game logic helpers
   createNoMatchBoard: () => number[][];
@@ -157,89 +156,27 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!state.isDrawerOpen) return; // Only fetch when drawer is open
 
     set({ isLoadingHashes: true });
-
-    // First, load from localStorage to have immediate data
-    try {
-      if (typeof window !== "undefined") {
-        const localTxHashes = localStorage.getItem("candyMatchTxHashes");
-        if (localTxHashes) {
-          const parsedHashes = JSON.parse(localTxHashes);
-          set({ txHashes: parsedHashes });
-          console.log(`Loaded ${parsedHashes.length} tx hashes from localStorage`);
-        }
-      }
-    } catch (localStorageError) {
-      console.error("Error loading transaction hashes from localStorage:", localStorageError);
-    }
-
-    // Then try to fetch from API to get the latest data
     try {
       const response = await fetch("/api/relayer/candymatch"); // Use GET endpoint
       if (response.ok) {
         const data = await response.json();
-        // Combine API hashes with local storage hashes to ensure we have everything
-        const apiHashes = data.hashes || [];
-
-        // Create a Set for deduplication
-        const allHashesSet = new Set([...apiHashes, ...state.txHashes]);
-        const combinedHashes = [...allHashesSet];
-
-        // Sort by recency (assuming newer hashes come first from the API)
-        // Limit to a reasonable number to prevent excessive storage
-        const MAX_STORED_HASHES = 200;
-        const finalHashes = combinedHashes.slice(0, MAX_STORED_HASHES);
-
-        // Update state with combined hashes
-        set({ txHashes: finalHashes });
-
-        // Save to localStorage for persistence
-        if (typeof window !== "undefined") {
-          localStorage.setItem("candyMatchTxHashes", JSON.stringify(finalHashes));
-        }
-
+        set({ txHashes: data.hashes || [] }); // Update state with fetched hashes
         // Update pending count from API response
         if (data.pendingCount !== undefined) {
           set({ pendingTxCount: data.pendingCount });
           console.log(`Updated pending count: ${data.pendingCount}`);
         }
-        console.log(
-          `Fetched ${apiHashes.length} hashes from backend, combined with local for ${finalHashes.length} total.`,
-        );
+        console.log(`Fetched ${data.hashes?.length || 0} hashes from backend.`);
       } else {
         console.error("Error fetching transaction hashes:", await response.text());
-        // Don't clear txHashes here, keep the localStorage values
+        set({ txHashes: [] });
       }
     } catch (error) {
-      console.error("Error fetching transaction hashes from API:", error);
-      // Don't clear txHashes here, keep the localStorage values
+      console.error("Error fetching transaction hashes:", error);
+      set({ txHashes: [] });
     } finally {
       set({ isLoadingHashes: false });
     }
-  },
-
-  // Add a function to store transaction hashes locally
-  addTxHashToHistory: (hash: string) => {
-    const { txHashes } = get();
-
-    // Don't add duplicates
-    if (txHashes.includes(hash)) return;
-
-    // Add new hash to the beginning of the array
-    const newHashes = [hash, ...txHashes];
-
-    // Limit array size to prevent excessive storage
-    const MAX_STORED_HASHES = 200;
-    const limitedHashes = newHashes.slice(0, MAX_STORED_HASHES);
-
-    // Update state
-    set({ txHashes: limitedHashes });
-
-    // Save to localStorage
-    if (typeof window !== "undefined") {
-      localStorage.setItem("candyMatchTxHashes", JSON.stringify(limitedHashes));
-    }
-
-    console.log(`Added transaction hash to history: ${hash}`);
   },
 
   // Helper function to create a board with no matches
