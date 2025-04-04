@@ -19,7 +19,7 @@ export const initMatchSound = () => {
 
 // Helper function to POST matches to the relayer API
 export const postMatchesToRelayer = async (matchesToPost: MatchData[], address: string | undefined) => {
-  const { setGameStatus, setPendingTxCount } = useGameStore.getState();
+  const { setGameStatus, setPendingTxCount, addTxHashToHistory } = useGameStore.getState();
 
   if (!address) {
     console.warn("Wallet not connected, skipping relayer call.");
@@ -45,6 +45,12 @@ export const postMatchesToRelayer = async (matchesToPost: MatchData[], address: 
       if (response.ok) {
         const data = await response.json();
         console.log("Relayer response:", data.message);
+
+        // If the backend immediately returns a hash (optimization), store it
+        if (data.hash) {
+          addTxHashToHistory(data.hash);
+        }
+
         // Update pending count based on the message (extract number)
         const queueSizeMatch = data.message?.match(/Current queue size: (\d+)/);
         if (queueSizeMatch && queueSizeMatch[1]) {
