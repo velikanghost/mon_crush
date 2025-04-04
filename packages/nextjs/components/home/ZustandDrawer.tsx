@@ -1,10 +1,27 @@
+import { useEffect, useState } from "react";
 import { useGameStore } from "~~/services/store/gameStore";
 
 /**
  * Transaction History Drawer that connects directly to the Zustand store
  */
 const ZustandDrawer = () => {
-  const { isDrawerOpen, setIsDrawerOpen, isLoadingHashes, txHashes, pendingTxCount } = useGameStore();
+  const { isDrawerOpen, setIsDrawerOpen, isLoadingHashes, txHashes, pendingTxCount, fetchTxHashesFromApi } =
+    useGameStore();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Force refresh transaction data when requested
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchTxHashesFromApi();
+    setIsRefreshing(false);
+  };
+
+  // Fetch transaction data when drawer opens
+  useEffect(() => {
+    if (isDrawerOpen) {
+      fetchTxHashesFromApi();
+    }
+  }, [isDrawerOpen, fetchTxHashesFromApi]);
 
   if (!isDrawerOpen) return null;
 
@@ -23,6 +40,17 @@ const ZustandDrawer = () => {
         </div>
         <div className="divider"></div>
 
+        {/* Refresh Button */}
+        <div className="flex justify-end mb-4">
+          <button
+            className={`btn btn-sm btn-outline ${isRefreshing || isLoadingHashes ? "loading" : ""}`}
+            onClick={handleRefresh}
+            disabled={isRefreshing || isLoadingHashes}
+          >
+            {isRefreshing || isLoadingHashes ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+
         {/* Pending Transactions Info */}
         {pendingTxCount > 0 && (
           <div className="p-3 mb-4 rounded-lg bg-info/10 text-info-content">
@@ -31,18 +59,18 @@ const ZustandDrawer = () => {
           </div>
         )}
 
-        {isLoadingHashes ? (
+        {isLoadingHashes || isRefreshing ? (
           <div className="flex flex-col items-center justify-center p-8">
             <span className="loading loading-spinner loading-lg text-accent"></span>
             <p className="mt-4 text-sm">Loading transaction history...</p>
           </div>
         ) : txHashes.length > 0 ? (
           <div className="space-y-2">
-            <p className="mb-2 text-sm text-base-content/80">Recent confirmed transactions: {txHashes.length}</p>
+            <p className="mb-2 text-sm text-base-content/80">Recent transactions: {txHashes.length}</p>
             <div className="overflow-y-auto max-h-[70vh]">
               {txHashes.map((hash, index) => (
-                <div key={index} className="pb-3 mb-3 border-b border-base-300">
-                  <div className="mb-1 text-xs text-base-content/60">Transaction #{txHashes.length - index}</div>
+                <div key={hash} className="pb-3 mb-3 border-b border-base-300">
+                  <div className="mb-1 text-xs text-base-content/60">Transaction #{index + 1}</div>
                   <a
                     href={`https://monad-testnet.socialscan.io/tx/${hash}`}
                     target="_blank"
@@ -71,11 +99,12 @@ const ZustandDrawer = () => {
                 d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
               />
             </svg>
-            <p className="mt-4">No confirmed transaction hashes found.</p>
-            {pendingTxCount === 0 && (
+            <p className="mt-4">No transaction history found.</p>
+            {pendingTxCount === 0 ? (
               <p className="mt-2 text-sm">Make some matches to see your blockchain transactions!</p>
+            ) : (
+              <p className="mt-2 text-sm">Check back shortly for confirmed transactions.</p>
             )}
-            {pendingTxCount > 0 && <p className="mt-2 text-sm">Check back shortly for confirmed transactions.</p>}
           </div>
         )}
       </div>
