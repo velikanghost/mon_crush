@@ -9,7 +9,7 @@ export type ScaffoldConfig = {
   onlyLocalBurnerWallet: boolean;
 };
 
-export const DEFAULT_ALCHEMY_API_KEY = "oKxs-03sij-U_N0iOlrSsZFr29-IqbuF";
+export const DEFAULT_ALCHEMY_API_KEY = "5pKJZ6GHall85BONE_znuPnDNen9gF3y";
 
 export const monadTestnet = defineChain({
   id: 10143,
@@ -17,9 +17,7 @@ export const monadTestnet = defineChain({
   nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
   rpcUrls: {
     default: {
-      http: [
-        "https://testnet-rpc2.monad.xyz/52227f026fa8fac9e2014c58fbf5643369b3bfc6",
-      ],
+      http: [`https://monad-testnet.g.alchemy.com/v2/${DEFAULT_ALCHEMY_API_KEY}`],
     },
   },
   blockExplorers: {
