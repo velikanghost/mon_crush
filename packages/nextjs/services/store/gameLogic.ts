@@ -1,27 +1,20 @@
 import { MatchData } from "./gameStore";
 import { useGameStore } from "./gameStore";
+import { playComboSound, playMatchSound } from "~~/services/audio/gameAudio";
 import { CANDY_NAMES } from "~~/utils/helpers";
 
+// Variable to store the refillBoard implementation
+let realRefillBoardImpl: ((board: number[][], checkForChainMatches?: boolean) => void) | null = null;
+
+// Remove old sound references and initialization
 // Sound reference for match sound
-let matchSoundRef: HTMLAudioElement | null = null;
+// let matchSoundRef: HTMLAudioElement | null = null;
 
 // Initialize the match sound
 export const initMatchSound = () => {
-  if (typeof window !== "undefined" && !matchSoundRef) {
-    matchSoundRef = new Audio("/match.mp3");
-  }
-};
-
-// Function to play match sound
-export const playMatchSound = () => {
-  if (matchSoundRef) {
-    // Reset the audio to start position and play
-    matchSoundRef.currentTime = 0;
-    matchSoundRef.play().catch(error => {
-      // Handle any browser autoplay restrictions
-      console.log("Error playing sound:", error);
-    });
-  }
+  // This function is now just a wrapper around the gameAudio initialization
+  // which will be handled in a separate component
+  console.log("Match sound initialization now handled by gameAudio service");
 };
 
 // Helper function to POST matches to the relayer API
@@ -68,9 +61,6 @@ export const postMatchesToRelayer = async (matchesToPost: MatchData[], address: 
   }
 };
 
-// Variable to store the refillBoard implementation
-let realRefillBoardImpl: ((board: number[][], checkForChainMatches?: boolean) => void) | null = null;
-
 // Process a chain match (automatic match after refill)
 export const processChainMatch = (board: number[][], chainMatches: MatchData[], address: string | undefined) => {
   const {
@@ -86,8 +76,8 @@ export const processChainMatch = (board: number[][], chainMatches: MatchData[], 
     checkForMatchesInBoard,
   } = useGameStore.getState();
 
-  // Play match sound
-  playMatchSound();
+  // Play combo sound instead of regular match sound for chain reactions
+  playComboSound(comboCounter + 1);
 
   // Increment combo counter
   const newComboCounter = comboCounter + 1;
@@ -377,7 +367,7 @@ export const handleCandyClick = async (x: number, y: number, address: string | u
         // Create a fresh copy for the swap back
         const revertedBoard = newBoard.map(row => [...row]);
 
-        // FIX: Use original values for swapping back
+        // Use original values for swapping back
         revertedBoard[selectedCandy.y][selectedCandy.x] = firstCandy;
         revertedBoard[y][x] = secondCandy;
 

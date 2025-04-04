@@ -1,20 +1,28 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
-import { HeartIcon } from "@heroicons/react/24/outline";
+import { HeartIcon, MusicalNoteIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/outline";
 import { SwitchTheme } from "~~/components/SwitchTheme";
 import Board from "~~/components/home/Board";
 import Stats from "~~/components/home/Stats";
 import ZustandDrawer from "~~/components/home/ZustandDrawer";
 import { DirectConnectWallet } from "~~/components/scaffold-eth/DirectConnectWallet";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import {
+  initGameAudio,
+  startBackgroundMusic,
+  stopBackgroundMusic,
+  toggleBackgroundMusic,
+} from "~~/services/audio/gameAudio";
 import { initMatchSound } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
 
 export default function Home() {
   const { address } = useAccount();
   const gameStore = useGameStore();
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const [audioInitialized, setAudioInitialized] = useState(false);
 
   // Get on-chain high score for the connected address
   const { data: onChainHighScore } = useScaffoldReadContract({
@@ -27,6 +35,32 @@ export default function Home() {
   const { writeContractAsync: writeHighScore } = useScaffoldWriteContract({
     contractName: "CandyCrushGame", // Use the correct contract name from your project
   });
+
+  // Initialize audio system on first user interaction
+  const initAudio = async () => {
+    if (!audioInitialized) {
+      try {
+        await initGameAudio();
+        setAudioInitialized(true);
+        // Automatically start background music
+        startBackgroundMusic();
+        setMusicPlaying(true);
+      } catch (error) {
+        console.error("Failed to initialize audio:", error);
+      }
+    }
+  };
+
+  // Handle music toggle
+  const handleToggleMusic = () => {
+    if (!audioInitialized) {
+      initAudio();
+      return;
+    }
+
+    const isPlaying = toggleBackgroundMusic();
+    setMusicPlaying(isPlaying);
+  };
 
   // Initialize game when component mounts
   useEffect(() => {
@@ -59,6 +93,11 @@ export default function Home() {
 
   // Prepare handleOpenDrawer function for Stats
   const handleOpenDrawer = () => {
+    // Also initialize audio on first interaction
+    if (!audioInitialized) {
+      initAudio();
+    }
+
     if (gameStore.setIsDrawerOpen) {
       gameStore.setIsDrawerOpen(true);
     }
@@ -69,8 +108,20 @@ export default function Home() {
 
   // Handle game reset
   const handleResetGame = () => {
+    // Also initialize audio on first interaction
+    if (!audioInitialized) {
+      initAudio();
+    }
+
     if (gameStore.resetGame) {
       gameStore.resetGame();
+    }
+  };
+
+  // Handle board click to initialize audio
+  const handleBoardClick = () => {
+    if (!audioInitialized) {
+      initAudio();
     }
   };
 
@@ -95,7 +146,7 @@ export default function Home() {
         </div>
 
         {/* Middle Column - Game Board */}
-        <div className="w-[50%] flex items-center">
+        <div className="w-[50%] flex items-center" onClick={handleBoardClick}>
           <Board />
         </div>
 
@@ -108,9 +159,19 @@ export default function Home() {
 
           {/* Game Controls */}
           <div className="flex flex-col w-full gap-3">
-            <button className="btn btn-primary" onClick={handleResetGame}>
-              Reset Game
-            </button>
+            <div className="flex gap-2">
+              <button className="flex-1 btn btn-primary" onClick={handleResetGame}>
+                Reset Game
+              </button>
+
+              <button
+                className="btn btn-circle btn-secondary"
+                onClick={handleToggleMusic}
+                title={musicPlaying ? "Mute Music" : "Play Music"}
+              >
+                {musicPlaying ? <SpeakerWaveIcon className="w-5 h-5" /> : <SpeakerXMarkIcon className="w-5 h-5" />}
+              </button>
+            </div>
 
             <button
               className="flex flex-row items-center justify-center btn btn-accent btn-outline"
