@@ -32,7 +32,7 @@ const Stats = ({
   const comboCount = propsComboCount ?? comboCounter ?? 0;
 
   return (
-    <div className="px-3 mb-4 shadow stats">
+    <div className="px-3 mb-4">
       <div className="stat">
         <div className="stat-title">Score</div>
         <div className="text-base md:text-2xl stat-value">{score}</div>
