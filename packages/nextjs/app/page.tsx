@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NextPage } from "next";
 import { useAccount } from "wagmi";
+import Board from "~~/components/home/Board";
+import Drawer from "~~/components/home/Drawer";
+import Stats from "~~/components/home/Stats";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { CANDY_NAMES } from "~~/utils/helpers";
 
 // Define candy types and their colors
 const CANDY_TYPES = {
@@ -13,25 +17,6 @@ const CANDY_TYPES = {
   3: "#8A2BE2", // Blue-violet for fly
   4: "#9370DB", // Medium purple for fox
   5: "#6b5b95", // Purple for pixel character
-};
-
-// Define candy names and images
-const CANDY_NAMES = {
-  0: "Empty",
-  1: "Monad",
-  2: "Hedgehog",
-  3: "Fly",
-  4: "Fox",
-  5: "Pixel",
-};
-
-// Image paths for candy types
-const CANDY_IMAGES = {
-  1: "/monad.png", // MONAD hat creature
-  2: "/hedgehog.png", // Purple hedgehog
-  3: "/fly.png", // Purple fly
-  4: "/fox.png", // Purple fox
-  5: "/pixel.png", // Pixel character
 };
 
 const Home: NextPage = () => {
@@ -835,100 +820,56 @@ const Home: NextPage = () => {
       {/* Main content */}
       <div className="flex flex-col items-center flex-grow w-full pt-10 md:px-8">
         <div className="flex flex-col items-center justify-center w-full">
-          {/* Left Column - Game Board */}
+          {/* Game Board */}
           <div className="h-full shadow-xl card bg-base-100 w-full md:w-[50%]">
             <div className="md:card-body">
               <div className="flex items-center justify-between px-3 py-3">
                 <h2 className="card-title">Monad Match</h2>
-                <button
-                  className="btn btn-sm btn-accent btn-outline"
-                  onClick={() => {
-                    setIsDrawerOpen(true);
-                  }}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5 mr-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                <div className="flex items-center gap-2">
+                  <button className="btn-sm btn btn-primary" onClick={resetGame}>
+                    Reset Game
+                  </button>
+                  <button
+                    className="btn btn-sm btn-accent btn-outline"
+                    onClick={() => {
+                      setIsDrawerOpen(true);
+                    }}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  History
-                </button>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="w-5 h-5 mr-1"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    History
+                  </button>
+                </div>
               </div>
               <p className="px-3 mb-4 text-sm">{gameStatus}</p>
 
-              <div className="px-3 mb-4 shadow stats">
-                <div className="stat">
-                  <div className="stat-title">Score</div>
-                  <div className="text-base md:text-2xl stat-value">{score || 0}</div>
-                </div>
+              <Stats
+                score={score}
+                highScore={highScore}
+                txCount={txCount}
+                pendingTxCount={pendingTxCount}
+                scoreMultiplier={scoreMultiplier}
+                comboCounter={comboCounter}
+              />
 
-                <div className="stat">
-                  <div className="stat-title">High Score</div>
-                  <div className="text-base md:text-2xl stat-value">{highScore || 0}</div>
-                </div>
-
-                <div className="stat">
-                  <div className="stat-title">Matches Sent</div>
-                  <div className="text-base md:text-2xl stat-value">{txCount || 0}</div>
-                  <div className="text-xs stat-desc text-info">~{pendingTxCount} pending</div>
-                </div>
-
-                {scoreMultiplier > 1 && (
-                  <div className="stat">
-                    <div className="stat-title text-accent">Combo</div>
-                    <div className="text-base md:text-2xl stat-value text-accent">×{scoreMultiplier.toFixed(1)}</div>
-                    <div className="stat-desc">{comboCounter} chain</div>
-                  </div>
-                )}
-              </div>
-
-              <div className="relative">
-                <div className="grid grid-cols-8 gap-1 md:gap-[6px] p-2 md:p-3 bg-gray-800 rounded-lg">
-                  {gameBoard.map((row, y) =>
-                    row.map((candy, x) => (
-                      <div
-                        key={`${x}-${y}`}
-                        className={`aspect-square rounded-sm md:rounded-md flex items-center justify-center cursor-pointer transition-all transform
-                                  ${selectedCandy && selectedCandy.x === x && selectedCandy.y === y ? "ring-4 ring-purple-300 scale-110" : ""}
-                                  ${matches.some(m => m.x === x && m.y === y) ? "animate-pulse bg-purple-400" : ""}`}
-                        style={{
-                          backgroundColor: candy === 0 ? "transparent" : "#F4E7EA",
-                          opacity: candy === 0 ? 0.2 : 1,
-                        }}
-                        onClick={() => handleCandyClick(x, y)}
-                      >
-                        {candy !== 0 && (
-                          <div className="flex items-center justify-center w-full h-full">
-                            <img
-                              src={CANDY_IMAGES[candy as keyof typeof CANDY_IMAGES]}
-                              alt={CANDY_NAMES[candy as keyof typeof CANDY_NAMES]}
-                              className="object-contain w-full h-full p-[6px] md:p-2"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )),
-                  )}
-                </div>
-              </div>
-
-              <div className="justify-center mt-6 card-actions">
-                <button className="btn btn-primary btn-lg" onClick={resetGame}>
-                  Reset Game
-                </button>
-                <button className="ml-4 btn btn-secondary btn-sm" onClick={resetHighScore}>
-                  Reset High Score (Local)
-                </button>
-              </div>
+              <Board
+                gameBoard={gameBoard}
+                selectedCandy={selectedCandy}
+                matches={matches}
+                handleCandyClick={handleCandyClick}
+              />
             </div>
           </div>
         </div>
@@ -936,77 +877,13 @@ const Home: NextPage = () => {
 
       {/* Transaction History Overlay */}
       {isDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black bg-opacity-50">
-          {/* Close overlay when clicking outside */}
-          <div className="absolute inset-0" onClick={() => setIsDrawerOpen(false)}></div>
-
-          {/* History Panel */}
-          <div className="relative z-10 min-h-screen p-4 overflow-y-auto border-l border-purple-300 shadow-xl w-full md:w-[30%] bg-base-200 text-base-content">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-accent">Transaction History</h3>
-              <button className="btn btn-sm btn-circle" onClick={() => setIsDrawerOpen(false)}>
-                ✕
-              </button>
-            </div>
-            <div className="divider"></div>
-
-            {/* Pending Transactions Info */}
-            {pendingTxCount > 0 && (
-              <div className="p-3 mb-4 rounded-lg bg-info/10 text-info-content">
-                <p className="text-sm font-semibold">~{pendingTxCount} transactions pending in the next batch.</p>
-                <p className="text-xs">Hashes will appear below once processed by the relayer.</p>
-              </div>
-            )}
-
-            {isLoadingHashes ? (
-              <div className="flex flex-col items-center justify-center p-8">
-                <span className="loading loading-spinner loading-lg text-accent"></span>
-                <p className="mt-4 text-sm">Loading transaction history...</p>
-              </div>
-            ) : txHashes.length > 0 ? (
-              <div className="space-y-2">
-                <p className="mb-2 text-sm text-base-content/80">Recent confirmed transactions: {txHashes.length}</p>
-                <div className="overflow-y-auto max-h-[70vh]">
-                  {txHashes.map((hash, index) => (
-                    <div key={index} className="pb-3 mb-3 border-b border-base-300">
-                      <div className="mb-1 text-xs text-base-content/60">Transaction #{txHashes.length - index}</div>
-                      <a
-                        href={`https://monad-testnet.socialscan.io/tx/${hash}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block font-mono text-sm break-all link link-accent hover:text-clip"
-                      >
-                        {hash}
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-8 text-center">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="w-12 h-12 text-base-300"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                  />
-                </svg>
-                <p className="mt-4">No confirmed transaction hashes found.</p>
-                {pendingTxCount === 0 && (
-                  <p className="mt-2 text-sm">Make some matches to see your blockchain transactions!</p>
-                )}
-                {pendingTxCount > 0 && <p className="mt-2 text-sm">Check back shortly for confirmed transactions.</p>}
-              </div>
-            )}
-          </div>
-        </div>
+        <Drawer
+          isDrawerOpen={isDrawerOpen}
+          setIsDrawerOpen={setIsDrawerOpen}
+          isLoadingHashes={isLoadingHashes}
+          txHashes={txHashes}
+          pendingTxCount={pendingTxCount}
+        />
       )}
     </>
   );
