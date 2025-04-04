@@ -1,13 +1,39 @@
+import { useAccount } from "wagmi";
+import { handleCandyClick } from "~~/services/store/gameLogic";
+import { useGameStore } from "~~/services/store/gameStore";
 import { CANDY_IMAGES, CANDY_NAMES } from "~~/utils/helpers";
 
+// For backward compatibility, we accept these as props but prefer the Zustand store
 interface BoardProps {
-  gameBoard: number[][];
-  selectedCandy: { x: number; y: number } | null;
-  matches: { x: number; y: number }[];
-  handleCandyClick: (x: number, y: number) => void;
+  gameBoard?: number[][];
+  selectedCandy?: { x: number; y: number } | null;
+  matches?: { x: number; y: number }[];
+  handleCandyClick?: (x: number, y: number) => void;
 }
 
-const Board = ({ gameBoard, selectedCandy, matches, handleCandyClick }: BoardProps) => {
+const Board = ({
+  gameBoard: propsGameBoard,
+  selectedCandy: propsSelectedCandy,
+  matches: propsMatches,
+  handleCandyClick: propsHandleCandyClick,
+}: BoardProps) => {
+  const { address } = useAccount();
+  const { gameBoard: storeGameBoard, selectedCandy: storeSelectedCandy, matches: storeMatches } = useGameStore();
+
+  // Use store values with fallback to props for backward compatibility
+  const gameBoard = storeGameBoard ?? propsGameBoard ?? [];
+  const selectedCandy = storeSelectedCandy ?? propsSelectedCandy ?? null;
+  const matches = storeMatches ?? propsMatches ?? [];
+
+  // Handle candy click with address from useAccount
+  const onCandyClick = async (x: number, y: number) => {
+    if (propsHandleCandyClick) {
+      propsHandleCandyClick(x, y);
+    } else {
+      await handleCandyClick(x, y, address);
+    }
+  };
+
   return (
     <div className="relative">
       <div className="grid grid-cols-8 gap-1 md:gap-[6px] p-2 md:p-3 bg-gray-800 rounded-lg">
@@ -22,7 +48,7 @@ const Board = ({ gameBoard, selectedCandy, matches, handleCandyClick }: BoardPro
                 backgroundColor: candy === 0 ? "transparent" : "#F4E7EA",
                 opacity: candy === 0 ? 0.2 : 1,
               }}
-              onClick={() => handleCandyClick(x, y)}
+              onClick={() => onCandyClick(x, y)}
             >
               {candy !== 0 && (
                 <div className="flex items-center justify-center w-full h-full">

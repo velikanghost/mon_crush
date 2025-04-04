@@ -1,14 +1,13 @@
 import { useGameStore } from "~~/services/store/gameStore";
 
-interface DrawerProps {
-  isDrawerOpen: boolean;
-  setIsDrawerOpen: (isDrawerOpen: boolean) => void;
-  isLoadingHashes: boolean;
-  txHashes: string[];
-  pendingTxCount: number;
-}
+/**
+ * Transaction History Drawer that connects directly to the Zustand store
+ */
+const ZustandDrawer = () => {
+  const { isDrawerOpen, setIsDrawerOpen, isLoadingHashes, txHashes, pendingTxCount } = useGameStore();
 
-const Drawer = ({ isDrawerOpen, setIsDrawerOpen, isLoadingHashes, txHashes, pendingTxCount }: DrawerProps) => {
+  if (!isDrawerOpen) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black bg-opacity-50">
       {/* Close overlay when clicking outside */}
@@ -84,4 +83,4 @@ const Drawer = ({ isDrawerOpen, setIsDrawerOpen, isLoadingHashes, txHashes, pend
   );
 };
 
-export default Drawer;
+export default ZustandDrawer;
