@@ -9,16 +9,6 @@ import Stats from "~~/components/home/Stats";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { CANDY_NAMES } from "~~/utils/helpers";
 
-// Define candy types and their colors
-const CANDY_TYPES = {
-  0: "transparent", // Empty
-  1: "#5D3FD3", // Purple for MONAD hat creature
-  2: "#674ea7", // Darker purple for hedgehog creature
-  3: "#8A2BE2", // Blue-violet for fly
-  4: "#9370DB", // Medium purple for fox
-  5: "#6b5b95", // Purple for pixel character
-};
-
 const Home: NextPage = () => {
   const { address } = useAccount(); // Get the connected wallet address
   const [gameBoard, setGameBoard] = useState<number[][]>(
@@ -32,7 +22,6 @@ const Home: NextPage = () => {
   const [highScore, setHighScore] = useState(0);
   const [txCount, setTxCount] = useState(0);
   const [gameStatus, setGameStatus] = useState("Ready to play!");
-  const [walletConnected, setWalletConnected] = useState(false);
   const [comboCounter, setComboCounter] = useState(0);
   const [scoreMultiplier, setScoreMultiplier] = useState(1);
   const [isSyncingHighScore, setIsSyncingHighScore] = useState(false);
@@ -76,11 +65,6 @@ const Home: NextPage = () => {
   const { writeContractAsync: writeCandyCrushGameAsync } = useScaffoldWriteContract({
     contractName: "CandyCrushGame",
   });
-
-  // Check if wallet is connected
-  useEffect(() => {
-    setWalletConnected(!!address);
-  }, [address]);
 
   // Read player score from contract
   const { data: playerScore } = useScaffoldReadContract({
@@ -146,17 +130,6 @@ const Home: NextPage = () => {
     [address, playerScore, writeCandyCrushGameAsync],
   );
 
-  // Reset high score function
-  const resetHighScore = useCallback(() => {
-    setHighScore(0);
-    if (typeof window !== "undefined") {
-      const storageKey = address ? `candyCrushHighScore-${address}` : "candyCrushHighScore";
-      console.log(`Removing high score from localStorage with key ${storageKey}`);
-      localStorage.removeItem(storageKey);
-    }
-    console.log("Local high score reset. Note: Blockchain score cannot be reset easily.");
-  }, [address]);
-
   // Load high score from localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -169,14 +142,6 @@ const Home: NextPage = () => {
       }
     }
   }, [address]);
-
-  // Read matches made from contract
-  const { data: matchesMade } = useScaffoldReadContract({
-    contractName: "CandyCrushGame",
-    functionName: "getMatchesMade",
-    args: address ? [address as `0x${string}`] : undefined,
-    enabled: !!address,
-  } as any);
 
   // Initialize game board with random candies but avoid automatic matches
   const initializeBoard = useCallback(() => {
@@ -362,58 +327,6 @@ const Home: NextPage = () => {
     return uniqueMatches;
   }, []);
 
-  // Check for matches in the current board
-  const checkForMatches = useCallback(() => {
-    return checkForMatchesInBoard(gameBoard);
-  }, [gameBoard, checkForMatchesInBoard]);
-
-  // Check if there are any valid moves left on the board
-  const checkForValidMoves = useCallback(
-    (board: number[][]) => {
-      // Check horizontal swaps
-      for (let y = 0; y < 8; y++) {
-        for (let x = 0; x < 7; x++) {
-          // Skip empty spaces
-          if (board[y][x] === 0 || board[y][x + 1] === 0) continue;
-
-          // Try swapping
-          const tempBoard = [...board.map(row => [...row])];
-          const temp = tempBoard[y][x];
-          tempBoard[y][x] = tempBoard[y][x + 1];
-          tempBoard[y][x + 1] = temp;
-
-          // Check if this creates a match
-          if (checkForMatchesInBoard(tempBoard).length > 0) {
-            return true;
-          }
-        }
-      }
-
-      // Check vertical swaps
-      for (let x = 0; x < 8; x++) {
-        for (let y = 0; y < 7; y++) {
-          // Skip empty spaces
-          if (board[y][x] === 0 || board[y + 1][x] === 0) continue;
-
-          // Try swapping
-          const tempBoard = [...board.map(row => [...row])];
-          const temp = tempBoard[y][x];
-          tempBoard[y][x] = tempBoard[y + 1][x];
-          tempBoard[y + 1][x] = temp;
-
-          // Check if this creates a match
-          if (checkForMatchesInBoard(tempBoard).length > 0) {
-            return true;
-          }
-        }
-      }
-
-      // No valid moves found
-      return false;
-    },
-    [checkForMatchesInBoard],
-  );
-
   // Reset combo counter when restarting game
   const resetGame = useCallback(() => {
     initializeBoard();
@@ -474,13 +387,6 @@ const Home: NextPage = () => {
     },
     [address], // Dependency on address
   );
-
-  // Refill the board with new candies without creating matches (forward declaration)
-  const refillBoard = useCallback((board: number[][], checkForChainMatches = true) => {
-    if (realRefillBoard) {
-      realRefillBoard(board, checkForChainMatches);
-    }
-  }, []);
 
   // Function to play match sound
   const playMatchSound = useCallback(() => {
