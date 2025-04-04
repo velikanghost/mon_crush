@@ -3,10 +3,11 @@
 import { useEffect } from "react";
 import { useAccount } from "wagmi";
 import { HeartIcon } from "@heroicons/react/24/outline";
+import { SwitchTheme } from "~~/components/SwitchTheme";
 import Board from "~~/components/home/Board";
 import Stats from "~~/components/home/Stats";
 import ZustandDrawer from "~~/components/home/ZustandDrawer";
-import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
+import { DirectConnectWallet } from "~~/components/scaffold-eth/DirectConnectWallet";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { initMatchSound } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
@@ -76,17 +77,18 @@ export default function Home() {
   return (
     <>
       {/* Main Layout - Fixed height, no scrolling */}
-      <div className="flex justify-between overflow-hidden mt-[2%]">
+      <div className="flex justify-between overflow-hidden mt-[2%] gap-6">
         {/* Left Column - Game Title and Stats */}
         <div className="w-[25%] flex flex-col">
           <div className="mb-4 pl-9">
             <div className="text-3xl font-bold">Monad Match</div>
             <div className="mt-2 text-base opacity-70">Match monanimals to earn points!</div>
           </div>
+
           {/* Game Status Messages */}
-          {/* <div className="mt-6 text-center">
+          <div className="mt-1 mb-4 ml-9">
             {gameStore.gameStatus && <div className="text-accent animate-pulse">{gameStore.gameStatus}</div>}
-          </div> */}
+          </div>
 
           {/* Stats Component */}
           <Stats handleOpenDrawer={handleOpenDrawer} />
@@ -98,19 +100,20 @@ export default function Home() {
         </div>
 
         {/* Right Column - Wallet & Buttons */}
-        <div className="w-[25%] flex flex-col items-end pr-9">
-          {/* Wallet Info */}
-
-          <RainbowKitCustomConnectButton />
+        <div className="w-[25%] flex flex-col pr-9 space-y-4">
+          {/* Wallet Info & Actions - Direct connect wallet with integrated options */}
+          <div className="p-4 rounded-lg shadow-md bg-base-100">
+            <DirectConnectWallet />
+          </div>
 
           {/* Game Controls */}
-          <div className="flex flex-col w-48 gap-3">
-            <button className="w-full btn btn-primary" onClick={handleResetGame}>
+          <div className="flex flex-col w-full gap-3">
+            <button className="btn btn-primary" onClick={handleResetGame}>
               Reset Game
             </button>
 
             <button
-              className="flex flex-row items-center justify-center w-full btn btn-accent btn-outline"
+              className="flex flex-row items-center justify-center btn btn-accent btn-outline"
               onClick={handleOpenDrawer}
             >
               <svg
@@ -133,25 +136,29 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-2 text-xs">
-        <p className="">Built by</p>
-        <a
-          className="flex items-center justify-center gap-1 underline underline-offset-2"
-          href="https://x.com/velkan_gst"
-          target="_blank"
-          rel="noreferrer"
-        >
-          velkan_gst
-        </a>
-        <p>using</p>
-        <a
-          className="flex items-center justify-center gap-1 underline underline-offset-2"
-          href="https://scaffoldeth.io"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Scaffold-ETH 2
-        </a>
+      <div className="flex items-center justify-between mt-4 px-9">
+        <div></div>
+        <div className="flex items-center justify-center gap-2 text-xs pl-9">
+          <p className="">Built by</p>
+          <a
+            className="flex items-center justify-center gap-1 underline underline-offset-2"
+            href="https://x.com/velkan_gst"
+            target="_blank"
+            rel="noreferrer"
+          >
+            velkan_gst
+          </a>
+          <p>using</p>
+          <a
+            className="flex items-center justify-center gap-1 underline underline-offset-2"
+            href="https://scaffoldeth.io"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Scaffold-ETH 2
+          </a>
+        </div>
+        <SwitchTheme className={`pointer-events-auto`} />
       </div>
 
       {/* Transaction History Drawer */}
