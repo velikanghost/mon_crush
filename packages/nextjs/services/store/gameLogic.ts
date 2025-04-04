@@ -238,8 +238,10 @@ export const refillBoard = (board: number[][], checkForChainMatches = true) => {
         // If there are chain matches, process them
         if (chainMatches.length > 0) {
           console.log(`Found ${chainMatches.length} chain matches!`);
-          // We'd normally call processChainMatch here, but we need the address
-          // This is handled in the handleCandyClick function instead
+          // FIX: Call processChainMatch with the current user's address
+          // Get the address from the gameStore
+          const address = useGameStore.getState().address;
+          processChainMatch(newBoard, chainMatches, address);
         } else {
           // No more chain matches, reset combo counter
           setComboCounter(0);
@@ -274,7 +276,13 @@ export const handleCandyClick = async (x: number, y: number, address: string | u
     setHighScore,
     setTxCount,
     checkForMatchesInBoard,
+    setAddress,
   } = useGameStore.getState();
+
+  // Store the address in the gameStore for chain reactions
+  if (address && setAddress) {
+    setAddress(address);
+  }
 
   const candyType = gameBoard[y][x];
   if (candyType === 0) return;
@@ -296,10 +304,13 @@ export const handleCandyClick = async (x: number, y: number, address: string | u
       // Create a deep copy of the board for swapping
       const newBoard = gameBoard.map(row => [...row]);
 
+      // Store original values
+      const firstCandy = newBoard[selectedCandy.y][selectedCandy.x];
+      const secondCandy = newBoard[y][x];
+
       // Swap candies
-      const temp = newBoard[y][x];
-      newBoard[y][x] = newBoard[selectedCandy.y][selectedCandy.x];
-      newBoard[selectedCandy.y][selectedCandy.x] = temp;
+      newBoard[y][x] = firstCandy;
+      newBoard[selectedCandy.y][selectedCandy.x] = secondCandy;
 
       // Update the game board
       setGameBoard(newBoard);
@@ -365,8 +376,10 @@ export const handleCandyClick = async (x: number, y: number, address: string | u
 
         // Create a fresh copy for the swap back
         const revertedBoard = newBoard.map(row => [...row]);
-        revertedBoard[y][x] = newBoard[selectedCandy.y][selectedCandy.x];
-        revertedBoard[selectedCandy.y][selectedCandy.x] = temp;
+
+        // FIX: Use original values for swapping back
+        revertedBoard[selectedCandy.y][selectedCandy.x] = firstCandy;
+        revertedBoard[y][x] = secondCandy;
 
         setGameBoard(revertedBoard);
 

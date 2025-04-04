@@ -25,6 +25,10 @@ export interface GameState {
   scoreMultiplier: number;
   isSyncingHighScore: boolean;
 
+  // User state
+  address?: string;
+  isInitialized: boolean;
+
   // Transaction state
   txHashes: string[];
   pendingTxCount: number;
@@ -79,6 +83,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   comboCounter: 0,
   scoreMultiplier: 1,
   isSyncingHighScore: false,
+  address: undefined,
+  isInitialized: false,
   txHashes: [],
   pendingTxCount: 0,
   isDrawerOpen: false,
@@ -109,7 +115,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Additional required methods
   setAddress: address => {
     console.log(`Setting address: ${address}`);
-    // Store user address if needed for future use
+    set({ address });
     // Can be expanded to load user-specific data here
   },
 
