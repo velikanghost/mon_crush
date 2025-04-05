@@ -98,9 +98,11 @@ export default function Home() {
       initAudio();
     }
 
-    // Just open the drawer, ZustandDrawer now handles loading data
     if (gameStore.setIsDrawerOpen) {
       gameStore.setIsDrawerOpen(true);
+    }
+    if (gameStore.fetchTxHashesFromApi) {
+      gameStore.fetchTxHashesFromApi();
     }
   };
 

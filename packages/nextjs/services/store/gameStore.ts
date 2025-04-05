@@ -1,4 +1,18 @@
 import { create } from "zustand";
+import {
+  addTxHashToDB,
+  addVerificationIdToDB,
+  clearTxHashesFromDB,
+  clearVerificationIdsFromDB,
+  getGameStatsFromDB,
+  getPendingTxCountFromDB,
+  getTxHashesFromDB,
+  getVerificationIdsFromDB,
+  initIndexedDB,
+  resetGameStatsInDB,
+  saveGameStatsToDB,
+  updatePendingTxCountInDB,
+} from "~~/services/indexeddb/transactionDB";
 import { CANDY_NAMES } from "~~/utils/helpers";
 
 export interface MatchData {
@@ -31,6 +45,7 @@ export interface GameState {
 
   // Transaction state
   txHashes: string[];
+  verificationIds: string[];
   pendingTxCount: number;
   isDrawerOpen: boolean;
   isLoadingHashes: boolean;
@@ -48,6 +63,7 @@ export interface GameState {
   setScoreMultiplier: (multiplier: number) => void;
   setIsSyncingHighScore: (isSyncing: boolean) => void;
   setTxHashes: (hashes: string[]) => void;
+  setVerificationIds: (ids: string[]) => void;
   setIsDrawerOpen: (isOpen: boolean) => void;
   setIsLoadingHashes: (isLoading: boolean) => void;
 
@@ -58,7 +74,8 @@ export interface GameState {
 
   // API interaction
   fetchTxHashesFromApi: () => Promise<void>;
-  addTxHashToHistory: (hash: string) => void;
+  addTxHash: (hash: string) => Promise<void>;
+  addVerificationId: (id: string) => Promise<void>;
 
   // Game logic helpers
   createNoMatchBoard: () => number[][];
@@ -87,6 +104,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   address: undefined,
   isInitialized: false,
   txHashes: [],
+  verificationIds: [],
   pendingTxCount: 0,
   isDrawerOpen: false,
   isLoadingHashes: false,
@@ -95,29 +113,64 @@ export const useGameStore = create<GameState>((set, get) => ({
   setGameBoard: board => set({ gameBoard: board }),
   setSelectedCandy: candy => set({ selectedCandy: candy }),
   setMatches: matches => set({ matches }),
-  setScore: scoreOrUpdater =>
-    set(state => ({
-      score: typeof scoreOrUpdater === "function" ? scoreOrUpdater(state.score) : scoreOrUpdater,
-    })),
-  setHighScore: score => set({ highScore: score }),
-  setTxCount: countOrUpdater =>
-    set(state => ({
-      txCount: typeof countOrUpdater === "function" ? countOrUpdater(state.txCount) : countOrUpdater,
-    })),
-  setPendingTxCount: count => set({ pendingTxCount: count }),
+  setScore: scoreOrUpdater => {
+    set(state => {
+      const newScore = typeof scoreOrUpdater === "function" ? scoreOrUpdater(state.score) : scoreOrUpdater;
+
+      // Save the new score to IndexedDB
+      saveGameStatsToDB({ score: newScore, txCount: state.txCount }).catch(error =>
+        console.error("Failed to save score to IndexedDB:", error),
+      );
+
+      return { score: newScore };
+    });
+  },
+  setHighScore: score => {
+    set({ highScore: score });
+
+    // Save high score to localStorage for backward compatibility
+    if (typeof window !== "undefined") {
+      localStorage.setItem("candyCrushHighScore", score.toString());
+    }
+  },
+  setTxCount: countOrUpdater => {
+    set(state => {
+      const newCount = typeof countOrUpdater === "function" ? countOrUpdater(state.txCount) : countOrUpdater;
+
+      // Save the new count to IndexedDB
+      saveGameStatsToDB({ score: state.score, txCount: newCount }).catch(error =>
+        console.error("Failed to save txCount to IndexedDB:", error),
+      );
+
+      return { txCount: newCount };
+    });
+  },
+  setPendingTxCount: count => {
+    set({ pendingTxCount: count });
+    // Also update in IndexedDB
+    updatePendingTxCountInDB(count);
+  },
   setGameStatus: status => set({ gameStatus: status }),
   setComboCounter: count => set({ comboCounter: count }),
   setScoreMultiplier: multiplier => set({ scoreMultiplier: multiplier }),
   setIsSyncingHighScore: isSyncing => set({ isSyncingHighScore: isSyncing }),
   setTxHashes: hashes => set({ txHashes: hashes }),
-  setIsDrawerOpen: isOpen => set({ isDrawerOpen: isOpen }),
+  setVerificationIds: ids => set({ verificationIds: ids }),
+  setIsDrawerOpen: isOpen => {
+    set({ isDrawerOpen: isOpen });
+    // If opening drawer, fetch transaction hashes from IndexedDB
+    if (isOpen) {
+      get().fetchTxHashesFromApi();
+    }
+  },
   setIsLoadingHashes: isLoading => set({ isLoadingHashes: isLoading }),
 
   // Additional required methods
   setAddress: address => {
     console.log(`Setting address: ${address}`);
     set({ address });
-    // Can be expanded to load user-specific data here
+    // Initialize IndexedDB when address is set
+    initIndexedDB().catch(error => console.error("Failed to initialize IndexedDB:", error));
   },
 
   updateHighScoreOnChain: (chainScore, callback) => {
@@ -139,8 +192,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { initializeBoard } = get();
     console.log("Initializing game...");
 
-    // Initialize the game board
-    initializeBoard();
+    // Initialize IndexedDB
+    initIndexedDB().catch(error => console.error("Failed to initialize IndexedDB:", error));
 
     // Load high score from localStorage if available
     if (typeof window !== "undefined") {
@@ -149,97 +202,87 @@ export const useGameStore = create<GameState>((set, get) => ({
         set({ highScore: parseInt(savedHighScore, 10) });
       }
     }
+
+    // Load game stats (score, txCount) from IndexedDB
+    getGameStatsFromDB()
+      .then(stats => {
+        console.log("Loaded game stats from IndexedDB:", stats);
+        set({
+          score: stats.score,
+          txCount: stats.txCount,
+        });
+        // Initialize the game board after loading stats
+        initializeBoard();
+      })
+      .catch(error => {
+        console.error("Failed to load game stats from IndexedDB:", error);
+        // Initialize the game board even if loading stats fails
+        initializeBoard();
+      });
+
+    // Load pending tx count from IndexedDB if available
+    getPendingTxCountFromDB()
+      .then(count => {
+        set({ pendingTxCount: count });
+      })
+      .catch(error => {
+        console.error("Failed to load pending transaction count from IndexedDB:", error);
+      });
   },
 
-  // API interaction
+  // API interaction - Now uses IndexedDB instead of API
   fetchTxHashesFromApi: async () => {
     const state = get();
     if (!state.isDrawerOpen) return; // Only fetch when drawer is open
 
     set({ isLoadingHashes: true });
-
-    // First, load from localStorage to have immediate data
     try {
-      if (typeof window !== "undefined") {
-        const localTxHashes = localStorage.getItem("candyMatchTxHashes");
-        if (localTxHashes) {
-          const parsedHashes = JSON.parse(localTxHashes);
-          set({ txHashes: parsedHashes });
-          console.log(`Loaded ${parsedHashes.length} tx hashes from localStorage`);
-        }
-      }
-    } catch (localStorageError) {
-      console.error("Error loading transaction hashes from localStorage:", localStorageError);
-    }
+      // Get transaction hashes from IndexedDB instead of API
+      const hashes = await getTxHashesFromDB();
+      set({ txHashes: hashes });
+      console.log(`Loaded ${hashes.length} transaction hashes from IndexedDB`);
 
-    // Then try to fetch from API to get the latest data
-    try {
-      const response = await fetch("/api/relayer/candymatch"); // Use GET endpoint
-      if (response.ok) {
-        const data = await response.json();
-        // Combine API hashes with local storage hashes to ensure we have everything
-        const apiHashes = data.hashes || [];
+      // Get pending verification IDs from IndexedDB
+      const verificationIds = await getVerificationIdsFromDB();
+      set({ verificationIds });
+      console.log(`Loaded ${verificationIds.length} verification IDs from IndexedDB`);
 
-        // Create a Set for deduplication
-        const allHashesSet = new Set([...apiHashes, ...state.txHashes]);
-        const combinedHashes = [...allHashesSet];
-
-        // Sort by recency (assuming newer hashes come first from the API)
-        // Limit to a reasonable number to prevent excessive storage
-        const MAX_STORED_HASHES = 200;
-        const finalHashes = combinedHashes.slice(0, MAX_STORED_HASHES);
-
-        // Update state with combined hashes
-        set({ txHashes: finalHashes });
-
-        // Save to localStorage for persistence
-        if (typeof window !== "undefined") {
-          localStorage.setItem("candyMatchTxHashes", JSON.stringify(finalHashes));
-        }
-
-        // Update pending count from API response
-        if (data.pendingCount !== undefined) {
-          set({ pendingTxCount: data.pendingCount });
-          console.log(`Updated pending count: ${data.pendingCount}`);
-        }
-        console.log(
-          `Fetched ${apiHashes.length} hashes from backend, combined with local for ${finalHashes.length} total.`,
-        );
-      } else {
-        console.error("Error fetching transaction hashes:", await response.text());
-        // Don't clear txHashes here, keep the localStorage values
-      }
+      // Get pending transaction count from IndexedDB
+      const pendingCount = await getPendingTxCountFromDB();
+      set({ pendingTxCount: pendingCount });
     } catch (error) {
-      console.error("Error fetching transaction hashes from API:", error);
-      // Don't clear txHashes here, keep the localStorage values
+      console.error("Error fetching data from IndexedDB:", error);
+      set({ txHashes: [], verificationIds: [] });
     } finally {
       set({ isLoadingHashes: false });
     }
   },
 
-  // Add a function to store transaction hashes locally
-  addTxHashToHistory: (hash: string) => {
+  // Add a transaction hash to the store and IndexedDB
+  addTxHash: async (hash: string) => {
+    // Add to IndexedDB
+    await addTxHashToDB(hash);
+
+    // Update state with new hash at the beginning of the array
     const { txHashes } = get();
+    set({ txHashes: [hash, ...txHashes] });
 
-    // Don't add duplicates
-    if (txHashes.includes(hash)) return;
+    // Reduce pending count
+    set(state => {
+      const newCount = Math.max(0, state.pendingTxCount - 1);
+      updatePendingTxCountInDB(newCount);
+      return { pendingTxCount: newCount };
+    });
+  },
 
-    // Add new hash to the beginning of the array
-    const newHashes = [hash, ...txHashes];
+  // Add a verification ID to the store and IndexedDB
+  addVerificationId: async (id: string) => {
+    // Add to IndexedDB
+    await addVerificationIdToDB(id);
 
-    // Limit array size to prevent excessive storage
-    const MAX_STORED_HASHES = 200;
-    const limitedHashes = newHashes.slice(0, MAX_STORED_HASHES);
-
-    // Update state
-    set({ txHashes: limitedHashes });
-
-    // Save to localStorage
-    if (typeof window !== "undefined") {
-      localStorage.setItem("candyMatchTxHashes", JSON.stringify(limitedHashes));
-    }
-
-    console.log(`Added transaction hash to history: ${hash}`);
+    // Update state with new ID at the beginning of the array
+    const { verificationIds } = get();
+    set({ verificationIds: [id, ...verificationIds] });
   },
 
   // Helper function to create a board with no matches
@@ -308,13 +351,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     return uniqueMatches;
   },
 
-  // Initialize game board
+  // Initialize game board - but don't reset the score
   initializeBoard: () => {
     const {
       checkForMatchesInBoard,
       createNoMatchBoard,
       setGameBoard,
-      setScore,
       setSelectedCandy,
       setMatches,
       setPendingTxCount,
@@ -364,7 +406,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       newBoard = createNoMatchBoard();
     }
 
-    setScore(0);
+    // Note: We're not resetting the score here anymore
     setGameBoard(newBoard);
     setSelectedCandy(null);
     setMatches([]);
@@ -382,15 +424,37 @@ export const useGameStore = create<GameState>((set, get) => ({
       setTxHashes,
       setPendingTxCount,
       setTxCount,
+      setScore,
+      setVerificationIds,
     } = get();
 
-    initializeBoard();
+    // Reset score and txCount
+    setScore(0);
+    setTxCount(0);
+
+    // Reset game state
     setComboCounter(0);
     setScoreMultiplier(1);
     setIsDrawerOpen(false);
     setTxHashes([]); // Clear displayed hashes
+    setVerificationIds([]); // Clear verification IDs
     setPendingTxCount(0); // Reset pending count
-    setTxCount(0); // Reset optimistic count
+
+    // Initialize a new game board
+    initializeBoard();
+
+    // Reset game stats in IndexedDB
+    resetGameStatsInDB().catch(error => console.error("Failed to reset game stats in IndexedDB:", error));
+
+    // Clear transaction hashes from IndexedDB
+    clearTxHashesFromDB().catch(error => console.error("Failed to clear transaction hashes from IndexedDB:", error));
+
+    // Clear verification IDs from IndexedDB
+    clearVerificationIdsFromDB().catch(error =>
+      console.error("Failed to clear verification IDs from IndexedDB:", error),
+    );
+
+    // Note: We do NOT reset the high score as specified by the requirements
   },
 
   // Handle candy click - This should be filled in with the handleCandyClick implementation

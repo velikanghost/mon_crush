@@ -19,7 +19,7 @@ export const initMatchSound = () => {
 
 // Helper function to POST matches to the relayer API
 export const postMatchesToRelayer = async (matchesToPost: MatchData[], address: string | undefined) => {
-  const { setGameStatus, setPendingTxCount, addTxHashToHistory } = useGameStore.getState();
+  const { setGameStatus, setPendingTxCount, addTxHash, addVerificationId } = useGameStore.getState();
 
   if (!address) {
     console.warn("Wallet not connected, skipping relayer call.");
@@ -46,15 +46,20 @@ export const postMatchesToRelayer = async (matchesToPost: MatchData[], address: 
         const data = await response.json();
         console.log("Relayer response:", data.message);
 
-        // If the backend immediately returns a hash (optimization), store it
-        if (data.hash) {
-          addTxHashToHistory(data.hash);
-        }
-
         // Update pending count based on the message (extract number)
         const queueSizeMatch = data.message?.match(/Current queue size: (\d+)/);
         if (queueSizeMatch && queueSizeMatch[1]) {
           setPendingTxCount(parseInt(queueSizeMatch[1], 10));
+        }
+
+        // If a verification ID is returned, store it locally
+        if (data.verificationId) {
+          // Store the verification ID to later poll for the real hash
+          await addVerificationId(data.verificationId);
+          console.log(`Added verification ID to local storage: ${data.verificationId}`);
+
+          // Start polling for the real hash in the background
+          pollForRealHash(data.verificationId);
         }
       } else {
         console.error("Error response from relayer:", await response.text());
@@ -65,6 +70,41 @@ export const postMatchesToRelayer = async (matchesToPost: MatchData[], address: 
       setGameStatus("Network error submitting match.");
     }
   }
+};
+
+// Function to poll for real transaction hashes
+const pollForRealHash = async (verificationId: string, retries = 10, delay = 5000) => {
+  const { addTxHash } = useGameStore.getState();
+
+  // Try to get the real hash up to 'retries' times
+  for (let i = 0; i < retries; i++) {
+    try {
+      // Wait for 'delay' milliseconds between attempts
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+      // Check if the real hash is available
+      const response = await fetch(`/api/relayer/candymatch?verificationId=${verificationId}`);
+
+      if (response.ok) {
+        const data = await response.json();
+
+        // If the hash was found and is valid, store it
+        if (data.found && data.hash) {
+          console.log(`Retrieved real transaction hash for verification ID ${verificationId}: ${data.hash}`);
+          await addTxHash(data.hash);
+          return; // Successfully got the hash, exit polling
+        }
+
+        console.log(`Hash for verification ID ${verificationId} not available yet. Retry ${i + 1}/${retries}`);
+      } else {
+        console.error("Error checking for transaction hash:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error polling for transaction hash:", error);
+    }
+  }
+
+  console.warn(`Could not retrieve real hash for verification ID ${verificationId} after ${retries} attempts`);
 };
 
 // Process a chain match (automatic match after refill)

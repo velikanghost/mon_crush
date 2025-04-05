@@ -78,14 +78,17 @@ if (!CONTRACT_ADDRESS) {
 
 // Batch settings
 const BATCH_SIZE = 20; // Number of transactions to send in a batch
-const batchQueue: { x: number; y: number; type: number }[] = [];
+const batchQueue: { x: number; y: number; type: number; verificationId: string }[] = [];
 let isProcessingBatch = false;
 let currentKeyIndex = 0; // Cycle through keys for batches
 let lastBatchProcessTime = Date.now(); // Track when we last processed a batch
 
-// Store transaction hashes (optional, could be replaced by frontend handling)
+// Store transaction hashes and their verification IDs
 const MAX_STORED_HASHES = 200;
 const txHashes: string[] = [];
+// Map to track verification IDs to real transaction hashes
+const verificationToHashMap: Record<string, string> = {};
+
 const storeTxHash = (hash: string) => {
   txHashes.unshift(hash);
   if (txHashes.length > MAX_STORED_HASHES) {
@@ -94,9 +97,9 @@ const storeTxHash = (hash: string) => {
 };
 
 // Type definition for a single match
-type Match = { x: number; y: number; type: number };
+type Match = { x: number; y: number; type: number; verificationId: string };
 
-async function processBatchTransactions(batch: { x: number; y: number; type: number }[]) {
+async function processBatchTransactions(batch: Match[]) {
   if (PRIVATE_KEYS.length === 0) {
     console.error("No private keys available to process batch.");
     return [];
@@ -160,8 +163,17 @@ async function processBatchTransactions(batch: { x: number; y: number; type: num
             gas: BigInt(100000),
           });
           console.log(`Tx ${index + 1} sent, hash: ${hash}`);
-          storeTxHash(hash); // Store hash locally
-          return hash;
+
+          // Store hash locally
+          storeTxHash(hash);
+
+          // Map the real hash to the verification ID
+          if (tx.verificationId) {
+            verificationToHashMap[tx.verificationId] = hash;
+            console.log(`Mapped verification ID ${tx.verificationId} to real hash ${hash}`);
+          }
+
+          return { hash, verificationId: tx.verificationId };
         } catch (txError) {
           console.error(`Error sending tx ${index + 1} (nonce ${currentNonce}):`, txError);
           return null; // Indicate failure for this specific transaction
@@ -170,8 +182,12 @@ async function processBatchTransactions(batch: { x: number; y: number; type: num
 
       // Wait for all transactions in the batch to be sent
       const results = await Promise.all(transactionPromises);
-      // Filter out failed transactions (null values) and ensure correct type
-      hashes = results.filter((hash): hash is `0x${string}` => hash !== null);
+      // Filter out failed transactions (null values) and extract hashes
+      const successfulResults = results.filter(
+        (result): result is { hash: `0x${string}`; verificationId: string } => result !== null,
+      );
+
+      hashes = successfulResults.map(result => result.hash);
 
       console.log(`Batch sent. Hashes: ${hashes.join(", ")}`);
     } catch (error) {
@@ -226,12 +242,28 @@ if (typeof setInterval !== "undefined") {
   }, 15000); // Check every 15 seconds
 }
 
-export async function GET() {
-  return NextResponse.json({
-    hashes: txHashes,
-    count: txHashes.length,
-    pendingCount: batchQueue.length,
-  });
+export async function GET(req: Request) {
+  // Parse the URL to get query parameters
+  const url = new URL(req.url);
+  const verificationId = url.searchParams.get("verificationId");
+
+  if (verificationId) {
+    // If a verification ID is provided, return the hash for that ID if available
+    const hash = verificationToHashMap[verificationId];
+    return NextResponse.json({
+      verificationId,
+      hash: hash || null,
+      found: !!hash,
+    });
+  } else {
+    // Otherwise return all hashes
+    return NextResponse.json({
+      hashes: txHashes,
+      count: txHashes.length,
+      pendingCount: batchQueue.length,
+      verificationMap: verificationToHashMap,
+    });
+  }
 }
 
 export async function POST(req: Request) {
@@ -248,93 +280,30 @@ export async function POST(req: Request) {
     const { x, y, candyType } = body;
 
     // Basic validation
-    if (
-      typeof x !== "number" ||
-      typeof y !== "number" ||
-      typeof candyType !== "number" ||
-      x < 0 ||
-      x >= 8 || // Assuming BOARD_SIZE is 8
-      y < 0 ||
-      y >= 8 ||
-      candyType <= 0 ||
-      candyType > 5 // Assuming max candy type is 5
-    ) {
-      console.error("Invalid match data found in batch:", body);
-      return NextResponse.json({ error: "Invalid match data found in batch." }, { status: 400 });
+    if (x === undefined || y === undefined || candyType === undefined) {
+      return NextResponse.json({ error: "Missing required fields: x, y, candyType" }, { status: 400 });
     }
 
-    // Add to batch queue - Using 'type' internally even though frontend sends as 'candyType'
-    batchQueue.push({ x, y, type: candyType });
-    console.log(`Added to batch queue: {${x}, ${y}, ${candyType}}. Queue size: ${batchQueue.length}`);
+    // Generate a verification ID for this transaction
+    const verificationId = `txreq-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
 
-    // Check if we can send immediately (optimization for immediate feedback)
-    // Only attempt immediate processing if we have the right conditions
-    let immediateHash: string | null = null;
+    // Add the match to the batch queue with verification ID
+    batchQueue.push({ x, y, type: candyType, verificationId });
+    console.log(
+      `Added match to queue with verification ID ${verificationId}. Current queue size: ${batchQueue.length}`,
+    );
 
-    // Only try immediate processing if queue was empty before this request
-    // This prevents request blocking and ensures responsive UX
-    if (batchQueue.length === 1 && !isProcessingBatch && PRIVATE_KEYS.length > 0) {
-      try {
-        // Get current key
-        const privateKey = PRIVATE_KEYS[currentKeyIndex];
-        const formattedPrivateKey = privateKey.startsWith("0x")
-          ? (privateKey as `0x${string}`)
-          : (`0x${privateKey}` as `0x${string}`);
-        const account = privateKeyToAccount(formattedPrivateKey);
-
-        // Quick check if key has enough balance (fast check)
-        const balance = await publicClient.getBalance({ address: account.address });
-        const minBalance = parseEther("0.001"); // Lower threshold for single tx
-
-        if (balance >= minBalance) {
-          const walletClient = createWalletClient({
-            account,
-            chain: monadTestnet,
-            transport,
-          });
-
-          // Try to send this single transaction immediately
-          const hash = await walletClient.writeContract({
-            address: CONTRACT_ADDRESS,
-            abi: CONTRACT_ABI,
-            functionName: "recordMatch",
-            args: [x, y, candyType],
-            chain: monadTestnet,
-            gas: BigInt(100000),
-          });
-
-          // If successful, remove from queue and store hash
-          batchQueue.pop(); // Remove the item we just processed
-          storeTxHash(hash); // Store in server memory
-          immediateHash = hash; // Return to client
-          console.log(`Immediate processing successful, hash: ${hash}`);
-        }
-      } catch (immediateError) {
-        console.log("Immediate processing failed, falling back to batch mode:", immediateError);
-        // Continue with normal batch processing if immediate attempt fails
-      }
-    }
-
-    // Trigger batch processing for any remaining queue items
+    // Check if we should trigger batch processing
     triggerBatchProcessing();
 
-    // Response with immediate hash if available
-    if (immediateHash) {
-      return NextResponse.json({
-        success: true,
-        message: `Match processed immediately. Current queue size: ${batchQueue.length}`,
-        hash: immediateHash,
-      });
-    } else {
-      return NextResponse.json({
-        success: true,
-        message: `Match added to batch queue. Current queue size: ${batchQueue.length}`,
-        // No immediate hash, will be processed in batch
-      });
-    }
+    return NextResponse.json({
+      message: `Match (${x},${y}) type ${candyType} queued for processing. Current queue size: ${batchQueue.length}`,
+      queueSize: batchQueue.length,
+      verificationId: verificationId,
+    });
   } catch (error) {
-    console.error("Error in candy match POST route:", error);
-    return NextResponse.json({ error: "Failed to process candy match" }, { status: 500 });
+    console.error("Error handling match submission:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
