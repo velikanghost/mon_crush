@@ -5025,6 +5025,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"dexie@npm:^4.0.11":
+  version: 4.0.11
+  resolution: "dexie@npm:4.0.11"
+  checksum: 144e93fb337880d2594b6907d4bda338772321adf04a4edd58768bc79cc0a173f2c1eb65efec77e077002477ac33db9221f75e653138764bbc6cf86d1468ad6c
+  languageName: node
+  linkType: hard
+
 "didyoumean@npm:^1.2.2":
   version: 1.2.2
   resolution: "didyoumean@npm:1.2.2"
@@ -9938,6 +9945,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "se-2@workspace:."
   dependencies:
+    dexie: ^4.0.11
     husky: ~8.0.3
     lint-staged: ~13.2.2
     pino-pretty: ^13.0.0
