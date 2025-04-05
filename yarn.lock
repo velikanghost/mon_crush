@@ -5025,6 +5025,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"dexie-react-hooks@npm:^1.1.7":
+  version: 1.1.7
+  resolution: "dexie-react-hooks@npm:1.1.7"
+  peerDependencies:
+    "@types/react": ">=16"
+    dexie: ^3.2 || ^4.0.1-alpha
+    react: ">=16"
+  checksum: d1133546ab8d345a8e10d38d272eaa1efa3a34e7bdefacd2acc2419f30e52ea02ab29b19d8911755fbda5882e59d132ba5c3cb840dd4430d3cbca15ef5ea610e
+  languageName: node
+  linkType: hard
+
 "dexie@npm:^4.0.11":
   version: 4.0.11
   resolution: "dexie@npm:4.0.11"
@@ -9946,6 +9957,7 @@ __metadata:
   resolution: "se-2@workspace:."
   dependencies:
     dexie: ^4.0.11
+    dexie-react-hooks: ^1.1.7
     husky: ~8.0.3
     lint-staged: ~13.2.2
     pino-pretty: ^13.0.0
