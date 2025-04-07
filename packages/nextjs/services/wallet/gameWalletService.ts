@@ -11,8 +11,8 @@ const CONTRACT_ADDRESS = deployedContracts[10143].MonadMatch.address;
 const transport = http(process.env.NEXT_PUBLIC_MONAD_RPC_URL);
 
 // Batch processing configuration
-const MIN_BATCH_SIZE = 20; // Minimum number of items to process in a batch
-const BATCH_TIMEOUT = 60000; // Process batch after 1 minute (60000ms) even if not full
+const BATCH_SIZE = 15; // Exact size of a batch to process
+const BATCH_TIMEOUT = 60000; // Process batch after 1 minute (60000ms) if fewer than BATCH_SIZE items
 
 // Queue for match transactions
 interface MatchQueueItem {
@@ -104,13 +104,13 @@ export const queueMatchTransaction = (
 
     // Start the timeout if this is the first item in the queue
     if (txQueue.length === 1 && !batchTimeoutId) {
-      console.log("Starting batch timeout of 1 minute");
+      console.log(`Starting batch timeout of 1 minute for batch with < ${BATCH_SIZE} items`);
       batchTimeoutId = setTimeout(() => processBatch(gameWalletPrivateKey), BATCH_TIMEOUT);
     }
 
-    // Process immediately if we've reached the minimum batch size
-    if (txQueue.length >= MIN_BATCH_SIZE && !isProcessingBatch) {
-      console.log(`Queue reached minimum batch size of ${MIN_BATCH_SIZE}. Processing batch now.`);
+    // Process immediately if we've reached exactly BATCH_SIZE items
+    if (txQueue.length === BATCH_SIZE && !isProcessingBatch) {
+      console.log(`Queue reached exactly ${BATCH_SIZE} items. Processing batch now.`);
       // Clear any existing timeout
       if (batchTimeoutId) {
         clearTimeout(batchTimeoutId);
@@ -130,7 +130,12 @@ const processBatch = async (gameWalletPrivateKey: string) => {
   if (isProcessingBatch || txQueue.length === 0) return;
 
   isProcessingBatch = true;
-  console.log(`Processing batch of ${txQueue.length} transactions`);
+
+  // Process either when we have BATCH_SIZE items or when timeout occurred with fewer items
+  const isFullBatch = txQueue.length >= BATCH_SIZE;
+  console.log(
+    `Processing batch of ${txQueue.length} transactions (${isFullBatch ? "full batch" : "timeout triggered"})`,
+  );
 
   // Clear any existing timeout
   if (batchTimeoutId) {
@@ -143,6 +148,12 @@ const processBatch = async (gameWalletPrivateKey: string) => {
     const formattedPrivateKey = gameWalletPrivateKey.startsWith("0x")
       ? (gameWalletPrivateKey as `0x${string}`)
       : (`0x${gameWalletPrivateKey}` as `0x${string}`);
+
+    // Validate private key format right before use
+    if (!/^0x[0-9a-fA-F]{64}$/.test(formattedPrivateKey)) {
+      console.error("Invalid private key format detected inside processBatch:", formattedPrivateKey);
+      throw new Error("Invalid private key format inside processBatch");
+    }
 
     // Create account and wallet client
     const account = privateKeyToAccount(formattedPrivateKey);
@@ -284,10 +295,16 @@ export const sendBatchMatchTransactions = async (
   }
 
   try {
+    // Convert private key to proper format
+    const formattedPrivateKey = gameWalletPrivateKey.startsWith("0x")
+      ? (gameWalletPrivateKey as `0x${string}`)
+      : (`0x${gameWalletPrivateKey}` as `0x${string}`);
+
     console.log(`Queuing ${matches.length} matches for processing`);
+    // Never log private keys, even for debugging
 
     // Add all matches to the queue and collect promises
-    const txPromises = matches.map(match => queueMatchTransaction(gameWalletPrivateKey, match));
+    const txPromises = matches.map(match => queueMatchTransaction(formattedPrivateKey, match));
 
     // Wait for all transactions to be processed
     const hashes = await Promise.all(

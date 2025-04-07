@@ -232,10 +232,9 @@ export const refillBoard = (board: number[][], checkForChainMatches = true) => {
         // If there are chain matches, process them
         if (chainMatches.length > 0) {
           console.log(`Found ${chainMatches.length} chain matches!`);
-          // FIX: Call processChainMatch with the current user's address
-          // Get the address from the gameStore
-          const address = useGameStore.getState().address;
-          processChainMatch(newBoard, chainMatches, address);
+          // FIX: Pass the game wallet private key, not the user's address
+          const { gameWalletPrivateKey } = useGameStore.getState();
+          processChainMatch(newBoard, chainMatches, gameWalletPrivateKey);
         } else {
           // No more chain matches, reset combo counter
           setComboCounter(0);
