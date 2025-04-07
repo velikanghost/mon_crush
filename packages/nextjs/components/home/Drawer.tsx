@@ -5,10 +5,9 @@ interface DrawerProps {
   setIsDrawerOpen: (isDrawerOpen: boolean) => void;
   isLoadingHashes: boolean;
   txHashes: string[];
-  pendingTxCount: number;
 }
 
-const Drawer = ({ isDrawerOpen, setIsDrawerOpen, isLoadingHashes, txHashes, pendingTxCount }: DrawerProps) => {
+const Drawer = ({ isDrawerOpen, setIsDrawerOpen, isLoadingHashes, txHashes }: DrawerProps) => {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black bg-opacity-50">
       {/* Close overlay when clicking outside */}
@@ -23,14 +22,6 @@ const Drawer = ({ isDrawerOpen, setIsDrawerOpen, isLoadingHashes, txHashes, pend
           </button>
         </div>
         <div className="divider"></div>
-
-        {/* Pending Transactions Info */}
-        {pendingTxCount > 0 && (
-          <div className="p-3 mb-4 rounded-lg bg-info/10 text-info-content">
-            <p className="text-sm font-semibold">~{pendingTxCount} transactions pending in the next batch.</p>
-            <p className="text-xs">Hashes will appear below once processed by the relayer.</p>
-          </div>
-        )}
 
         {isLoadingHashes ? (
           <div className="flex flex-col items-center justify-center p-8">
@@ -72,11 +63,6 @@ const Drawer = ({ isDrawerOpen, setIsDrawerOpen, isLoadingHashes, txHashes, pend
                 d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
               />
             </svg>
-            <p className="mt-4">No confirmed transaction hashes found.</p>
-            {pendingTxCount === 0 && (
-              <p className="mt-2 text-sm">Make some matches to see your blockchain transactions!</p>
-            )}
-            {pendingTxCount > 0 && <p className="mt-2 text-sm">Check back shortly for confirmed transactions.</p>}
           </div>
         )}
       </div>
