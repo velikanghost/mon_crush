@@ -17,7 +17,8 @@ export const monadTestnet = defineChain({
   nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
   rpcUrls: {
     default: {
-      http: [`https://monad-testnet.g.alchemy.com/v2/${DEFAULT_ALCHEMY_API_KEY}`],
+      //http: [`https://monad-testnet.g.alchemy.com/v2/${DEFAULT_ALCHEMY_API_KEY}`],
+      http: ["https://powerful-floral-research.monad-testnet.quiknode.pro/18ee4a8a1395f4e0ebff330eab036101c33d8e76/"],
     },
   },
   blockExplorers: {

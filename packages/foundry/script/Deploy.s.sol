@@ -2,8 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "./DeployHelpers.s.sol";
-import {DeployYourContract} from "./DeployYourContract.s.sol";
-import {DeployCandyCrushGame} from "./DeployCandyCrushGame.s.sol";
+import {DeployMonadMatch} from "./DeployMonadMatch.s.sol";
 
 /**
  * @notice Main deployment script for all contracts
@@ -19,8 +18,8 @@ contract DeployScript is ScaffoldETHDeploy {
         // DeployYourContract deployYourContract = new DeployYourContract();
         // deployYourContract.run();
 
-        DeployCandyCrushGame deployCandyCrushGame = new DeployCandyCrushGame();
-        deployCandyCrushGame.run();
+        DeployMonadMatch deployMonadMatch = new DeployMonadMatch();
+        deployMonadMatch.run();
 
         // Deploy another contract
         // DeployMyContract myContract = new DeployMyContract();

@@ -1,18 +1,4 @@
 import { create } from "zustand";
-import {
-  addTxHashToDB,
-  addVerificationIdToDB,
-  clearTxHashesFromDB,
-  clearVerificationIdsFromDB,
-  getGameStatsFromDB,
-  getPendingTxCountFromDB,
-  getTxHashesFromDB,
-  getVerificationIdsFromDB,
-  initIndexedDB,
-  resetGameStatsInDB,
-  saveGameStatsToDB,
-  updatePendingTxCountInDB,
-} from "~~/services/indexeddb/transactionDB";
 import { CANDY_NAMES } from "~~/utils/helpers";
 
 export interface MatchData {
@@ -41,12 +27,12 @@ export interface GameState {
 
   // User state
   address?: string;
+  gameWalletPrivateKey?: string;
+  gameWalletAddress?: string;
   isInitialized: boolean;
 
   // Transaction state
   txHashes: string[];
-  verificationIds: string[];
-  pendingTxCount: number;
   isDrawerOpen: boolean;
   isLoadingHashes: boolean;
 
@@ -57,25 +43,22 @@ export interface GameState {
   setScore: (scoreOrUpdater: number | ((prev: number) => number)) => void;
   setHighScore: (score: number) => void;
   setTxCount: (countOrUpdater: number | ((prev: number) => number)) => void;
-  setPendingTxCount: (count: number) => void;
   setGameStatus: (status: string) => void;
   setComboCounter: (count: number) => void;
   setScoreMultiplier: (multiplier: number) => void;
   setIsSyncingHighScore: (isSyncing: boolean) => void;
   setTxHashes: (hashes: string[]) => void;
-  setVerificationIds: (ids: string[]) => void;
   setIsDrawerOpen: (isOpen: boolean) => void;
   setIsLoadingHashes: (isLoading: boolean) => void;
+
+  // Game wallet methods
+  setGameWalletPrivateKey: (privateKey: string) => void;
+  setGameWalletAddress: (address: string) => void;
 
   // Additional required methods
   setAddress: (address: string) => void;
   updateHighScoreOnChain: (chainScore: number, callback: (newHighScore: number) => void) => void;
   initGame: () => void;
-
-  // API interaction
-  fetchTxHashesFromApi: () => Promise<void>;
-  addTxHash: (hash: string) => Promise<void>;
-  addVerificationId: (id: string) => Promise<void>;
 
   // Game logic helpers
   createNoMatchBoard: () => number[][];
@@ -102,10 +85,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   scoreMultiplier: 1,
   isSyncingHighScore: false,
   address: undefined,
+  gameWalletPrivateKey: undefined,
+  gameWalletAddress: undefined,
   isInitialized: false,
   txHashes: [],
-  verificationIds: [],
-  pendingTxCount: 0,
   isDrawerOpen: false,
   isLoadingHashes: false,
 
@@ -116,19 +99,18 @@ export const useGameStore = create<GameState>((set, get) => ({
   setScore: scoreOrUpdater => {
     set(state => {
       const newScore = typeof scoreOrUpdater === "function" ? scoreOrUpdater(state.score) : scoreOrUpdater;
-
-      // Save the new score to IndexedDB
-      saveGameStatsToDB({ score: newScore, txCount: state.txCount }).catch(error =>
-        console.error("Failed to save score to IndexedDB:", error),
-      );
-
       return { score: newScore };
     });
+
+    // Save score to localStorage
+    if (typeof window !== "undefined") {
+      localStorage.setItem("candyCrushScore", get().score.toString());
+    }
   },
   setHighScore: score => {
     set({ highScore: score });
 
-    // Save high score to localStorage for backward compatibility
+    // Save high score to localStorage
     if (typeof window !== "undefined") {
       localStorage.setItem("candyCrushHighScore", score.toString());
     }
@@ -136,41 +118,32 @@ export const useGameStore = create<GameState>((set, get) => ({
   setTxCount: countOrUpdater => {
     set(state => {
       const newCount = typeof countOrUpdater === "function" ? countOrUpdater(state.txCount) : countOrUpdater;
-
-      // Save the new count to IndexedDB
-      saveGameStatsToDB({ score: state.score, txCount: newCount }).catch(error =>
-        console.error("Failed to save txCount to IndexedDB:", error),
-      );
-
       return { txCount: newCount };
     });
-  },
-  setPendingTxCount: count => {
-    set({ pendingTxCount: count });
-    // Also update in IndexedDB
-    updatePendingTxCountInDB(count);
+
+    // Save tx count to localStorage
+    if (typeof window !== "undefined") {
+      localStorage.setItem("candyCrushTxCount", get().txCount.toString());
+    }
   },
   setGameStatus: status => set({ gameStatus: status }),
   setComboCounter: count => set({ comboCounter: count }),
   setScoreMultiplier: multiplier => set({ scoreMultiplier: multiplier }),
   setIsSyncingHighScore: isSyncing => set({ isSyncingHighScore: isSyncing }),
   setTxHashes: hashes => set({ txHashes: hashes }),
-  setVerificationIds: ids => set({ verificationIds: ids }),
   setIsDrawerOpen: isOpen => {
     set({ isDrawerOpen: isOpen });
-    // If opening drawer, fetch transaction hashes from IndexedDB
-    if (isOpen) {
-      get().fetchTxHashesFromApi();
-    }
   },
   setIsLoadingHashes: isLoading => set({ isLoadingHashes: isLoading }),
+
+  // Game wallet methods
+  setGameWalletPrivateKey: privateKey => set({ gameWalletPrivateKey: privateKey }),
+  setGameWalletAddress: address => set({ gameWalletAddress: address }),
 
   // Additional required methods
   setAddress: address => {
     console.log(`Setting address: ${address}`);
     set({ address });
-    // Initialize IndexedDB when address is set
-    initIndexedDB().catch(error => console.error("Failed to initialize IndexedDB:", error));
   },
 
   updateHighScoreOnChain: (chainScore, callback) => {
@@ -192,100 +165,63 @@ export const useGameStore = create<GameState>((set, get) => ({
     const { initializeBoard } = get();
     console.log("Initializing game...");
 
-    // Initialize IndexedDB
-    initIndexedDB().catch(error => console.error("Failed to initialize IndexedDB:", error));
-
     // Load high score from localStorage if available
     if (typeof window !== "undefined") {
       const savedHighScore = localStorage.getItem("candyCrushHighScore");
       if (savedHighScore) {
         set({ highScore: parseInt(savedHighScore, 10) });
       }
+
+      // Load score and txCount from localStorage if available
+      const savedScore = localStorage.getItem("candyCrushScore");
+      if (savedScore) {
+        set({ score: parseInt(savedScore, 10) });
+      }
+
+      const savedTxCount = localStorage.getItem("candyCrushTxCount");
+      if (savedTxCount) {
+        set({ txCount: parseInt(savedTxCount, 10) });
+      }
     }
 
-    // Load game stats (score, txCount) from IndexedDB
-    getGameStatsFromDB()
-      .then(stats => {
-        console.log("Loaded game stats from IndexedDB:", stats);
-        set({
-          score: stats.score,
-          txCount: stats.txCount,
-        });
-        // Initialize the game board after loading stats
-        initializeBoard();
-      })
-      .catch(error => {
-        console.error("Failed to load game stats from IndexedDB:", error);
-        // Initialize the game board even if loading stats fails
-        initializeBoard();
-      });
-
-    // Load pending tx count from IndexedDB if available
-    getPendingTxCountFromDB()
-      .then(count => {
-        set({ pendingTxCount: count });
-      })
-      .catch(error => {
-        console.error("Failed to load pending transaction count from IndexedDB:", error);
-      });
+    // Initialize the game board
+    initializeBoard();
   },
 
-  // API interaction - Now uses IndexedDB instead of API
-  fetchTxHashesFromApi: async () => {
-    const state = get();
-    if (!state.isDrawerOpen) return; // Only fetch when drawer is open
-
-    set({ isLoadingHashes: true });
-    try {
-      // Get transaction hashes from IndexedDB instead of API
-      const hashes = await getTxHashesFromDB();
-      set({ txHashes: hashes });
-      console.log(`Loaded ${hashes.length} transaction hashes from IndexedDB`);
-
-      // Get pending verification IDs from IndexedDB
-      const verificationIds = await getVerificationIdsFromDB();
-      set({ verificationIds });
-      console.log(`Loaded ${verificationIds.length} verification IDs from IndexedDB`);
-
-      // Get pending transaction count from IndexedDB
-      const pendingCount = await getPendingTxCountFromDB();
-      set({ pendingTxCount: pendingCount });
-    } catch (error) {
-      console.error("Error fetching data from IndexedDB:", error);
-      set({ txHashes: [], verificationIds: [] });
-    } finally {
-      set({ isLoadingHashes: false });
-    }
-  },
-
-  // Add a transaction hash to the store and IndexedDB
-  addTxHash: async (hash: string) => {
-    // Add to IndexedDB
-    await addTxHashToDB(hash);
-
-    // Update state with new hash at the beginning of the array
-    const { txHashes } = get();
-    set({ txHashes: [hash, ...txHashes] });
-
-    // Reduce pending count
-    set(state => {
-      const newCount = Math.max(0, state.pendingTxCount - 1);
-      updatePendingTxCountInDB(newCount);
-      return { pendingTxCount: newCount };
+  // Initialize or reset the game board
+  initializeBoard: () => {
+    const newBoard = get().createNoMatchBoard();
+    set({
+      gameBoard: newBoard,
+      selectedCandy: null,
+      matches: [],
+      comboCounter: 0,
+      scoreMultiplier: 1,
+      isInitialized: true,
     });
   },
 
-  // Add a verification ID to the store and IndexedDB
-  addVerificationId: async (id: string) => {
-    // Add to IndexedDB
-    await addVerificationIdToDB(id);
+  // Reset the game
+  resetGame: () => {
+    set({
+      score: 0,
+      txCount: 0,
+      comboCounter: 0,
+      scoreMultiplier: 1,
+      gameStatus: "Game reset! Ready to play!",
+    });
 
-    // Update state with new ID at the beginning of the array
-    const { verificationIds } = get();
-    set({ verificationIds: [id, ...verificationIds] });
+    // Update localStorage
+    if (typeof window !== "undefined") {
+      localStorage.setItem("candyCrushScore", "0");
+      localStorage.setItem("candyCrushTxCount", "0");
+    }
+
+    // Re-initialize the board
+    get().initializeBoard();
   },
 
-  // Helper function to create a board with no matches
+  // Create no-match board (to prevent matches on initialization)
   createNoMatchBoard: () => {
     const board = Array(8)
       .fill(0)
@@ -293,175 +229,106 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     for (let y = 0; y < 8; y++) {
       for (let x = 0; x < 8; x++) {
+        // Determine what candy types would create matches
         const invalidTypes = new Set<number>();
-        // Check horizontal
-        if (x >= 2 && board[y][x - 1] === board[y][x - 2]) invalidTypes.add(board[y][x - 1]);
-        // Check vertical
-        if (y >= 2 && board[y - 1][x] === board[y - 2][x]) invalidTypes.add(board[y - 1][x]);
 
+        // Check horizontal matches (left side)
+        if (x >= 2 && board[y][x - 1] === board[y][x - 2]) {
+          invalidTypes.add(board[y][x - 1]);
+        }
+
+        // Check vertical matches (top side)
+        if (y >= 2 && board[y - 1][x] === board[y - 2][x]) {
+          invalidTypes.add(board[y - 1][x]);
+        }
+
+        // Choose a valid candy type
         let validTypes = [1, 2, 3, 4, 5].filter(t => !invalidTypes.has(t));
-        if (validTypes.length === 0) validTypes = [1, 2, 3, 4, 5];
+
+        // If no valid types (shouldn't happen), use any type
+        if (validTypes.length === 0) {
+          validTypes = [1, 2, 3, 4, 5];
+        }
+
+        // Set a random valid candy type
         board[y][x] = validTypes[Math.floor(Math.random() * validTypes.length)];
       }
     }
     return board;
   },
 
-  // Helper function to check for matches
-  checkForMatchesInBoard: (board: number[][]) => {
-    console.log("Checking for matches in board");
-    const foundMatches: MatchData[] = [];
+  // Check for matches in board
+  checkForMatchesInBoard: initialBoard => {
+    const matches: MatchData[] = [];
+    // Copy the board to avoid mutations
+    const board = initialBoard.map(row => [...row]);
 
-    // Check horizontal matches (3+)
+    // Check horizontal matches
     for (let y = 0; y < 8; y++) {
       for (let x = 0; x < 6; x++) {
-        const type = board[y][x];
-        if (type !== 0 && type === board[y][x + 1] && type === board[y][x + 2]) {
-          let matchLength = 3;
-          while (x + matchLength < 8 && board[y][x + matchLength] === type) {
-            matchLength++;
+        if (board[y][x] !== 0 && board[y][x] === board[y][x + 1] && board[y][x] === board[y][x + 2]) {
+          // Found a horizontal match - determine its full length
+          let matchLen = 3;
+          let startX = x;
+          while (startX > 0 && board[y][startX - 1] === board[y][x]) {
+            startX--;
+            matchLen++;
           }
-          for (let i = 0; i < matchLength; i++) foundMatches.push({ x: x + i, y, type });
-          x += matchLength - 1;
+          while (x + matchLen < 8 && board[y][x + matchLen] === board[y][x]) {
+            matchLen++;
+          }
+
+          // Add all candies in this match
+          for (let i = 0; i < matchLen; i++) {
+            const matchX = startX + i;
+            // Check if this position is already part of a match
+            if (!matches.some(m => m.x === matchX && m.y === y)) {
+              matches.push({ x: matchX, y, type: board[y][x] });
+            }
+          }
+
+          // Skip the rest of this match
+          x = startX + matchLen - 1;
         }
       }
     }
 
-    // Check vertical matches (3+)
+    // Check vertical matches
     for (let x = 0; x < 8; x++) {
       for (let y = 0; y < 6; y++) {
-        const type = board[y][x];
-        if (type !== 0 && type === board[y + 1][x] && type === board[y + 2][x]) {
-          let matchLength = 3;
-          while (y + matchLength < 8 && board[y + matchLength][x] === type) {
-            matchLength++;
+        if (board[y][x] !== 0 && board[y][x] === board[y + 1][x] && board[y][x] === board[y + 2][x]) {
+          // Found a vertical match - determine its full length
+          let matchLen = 3;
+          let startY = y;
+          while (startY > 0 && board[startY - 1][x] === board[y][x]) {
+            startY--;
+            matchLen++;
           }
-          for (let i = 0; i < matchLength; i++) foundMatches.push({ x, y: y + i, type });
-          y += matchLength - 1;
+          while (y + matchLen < 8 && board[y + matchLen][x] === board[y][x]) {
+            matchLen++;
+          }
+
+          // Add all candies in this match
+          for (let i = 0; i < matchLen; i++) {
+            const matchY = startY + i;
+            // Check if this position is already part of a match
+            if (!matches.some(m => m.x === x && m.y === matchY)) {
+              matches.push({ x, y: matchY, type: board[y][x] });
+            }
+          }
+
+          // Skip the rest of this match
+          y = startY + matchLen - 1;
         }
       }
     }
 
-    // Remove duplicates to handle overlapping matches
-    const uniqueMatches = foundMatches.filter(
-      (match, index, self) => index === self.findIndex(m => m.x === match.x && m.y === match.y),
-    );
-
-    console.log(`Found ${uniqueMatches.length} total matches`);
-    return uniqueMatches;
+    return matches;
   },
 
-  // Initialize game board - but don't reset the score
-  initializeBoard: () => {
-    const {
-      checkForMatchesInBoard,
-      createNoMatchBoard,
-      setGameBoard,
-      setSelectedCandy,
-      setMatches,
-      setPendingTxCount,
-      setGameStatus,
-    } = get();
-
-    // Create a new board with random candies
-    let newBoard = Array(8)
-      .fill(0)
-      .map(() =>
-        Array(8)
-          .fill(0)
-          .map(() => Math.floor(Math.random() * 5) + 1),
-      );
-
-    // Keep regenerating candies until there are no matches
-    let attemptCount = 0;
-    let noMatches = false;
-
-    while (!noMatches && attemptCount < 10) {
-      const existingMatches = checkForMatchesInBoard(newBoard);
-      if (existingMatches.length === 0) {
-        noMatches = true;
-      } else {
-        // Replace matched candies
-        existingMatches.forEach((match: MatchData) => {
-          let newType;
-          do {
-            newType = Math.floor(Math.random() * 5) + 1;
-            // Add checks to prevent immediate new matches if possible
-          } while (
-            // Simple check: Avoid direct match with neighbors
-            (match.x > 0 && newType === newBoard[match.y][match.x - 1]) ||
-            (match.x < 7 && newType === newBoard[match.y][match.x + 1]) ||
-            (match.y > 0 && newType === newBoard[match.y - 1][match.x]) ||
-            (match.y < 7 && newType === newBoard[match.y + 1][match.x])
-          );
-          newBoard[match.y][match.x] = newType;
-        });
-        attemptCount++;
-      }
-    }
-
-    if (!noMatches) {
-      console.warn("Could not generate initial board without matches, creating best effort board.");
-      // If still matches after attempts, use the potentially flawed board or try createNoMatchBoard
-      newBoard = createNoMatchBoard();
-    }
-
-    // Note: We're not resetting the score here anymore
-    setGameBoard(newBoard);
-    setSelectedCandy(null);
-    setMatches([]);
-    setPendingTxCount(0); // Reset pending count
-    setGameStatus("New game started! Match 3 or more candies.");
-  },
-
-  // Reset game
-  resetGame: () => {
-    const {
-      initializeBoard,
-      setComboCounter,
-      setScoreMultiplier,
-      setIsDrawerOpen,
-      setTxHashes,
-      setPendingTxCount,
-      setTxCount,
-      setScore,
-      setVerificationIds,
-    } = get();
-
-    // Reset score and txCount
-    setScore(0);
-    setTxCount(0);
-
-    // Reset game state
-    setComboCounter(0);
-    setScoreMultiplier(1);
-    setIsDrawerOpen(false);
-    setTxHashes([]); // Clear displayed hashes
-    setVerificationIds([]); // Clear verification IDs
-    setPendingTxCount(0); // Reset pending count
-
-    // Initialize a new game board
-    initializeBoard();
-
-    // Reset game stats in IndexedDB
-    resetGameStatsInDB().catch(error => console.error("Failed to reset game stats in IndexedDB:", error));
-
-    // Clear transaction hashes from IndexedDB
-    clearTxHashesFromDB().catch(error => console.error("Failed to clear transaction hashes from IndexedDB:", error));
-
-    // Clear verification IDs from IndexedDB
-    clearVerificationIdsFromDB().catch(error =>
-      console.error("Failed to clear verification IDs from IndexedDB:", error),
-    );
-
-    // Note: We do NOT reset the high score as specified by the requirements
-  },
-
-  // Handle candy click - This should be filled in with the handleCandyClick implementation
-  // For now we'll just provide a placeholder that will be implemented in a separate file
-  handleCandyClick: async (x, y) => {
-    // This will be implemented when we refactor page.tsx
-    console.log(`Clicked candy at ${x}, ${y}`);
-    // The actual implementation will be added in page.tsx
+  // Handle candy click - implemented in gameLogic.ts
+  handleCandyClick: async () => {
+    console.warn("handleCandyClick not implemented yet");
+    return Promise.resolve();
   },
 }));
