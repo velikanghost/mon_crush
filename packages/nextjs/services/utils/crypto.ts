@@ -5,12 +5,6 @@ export const deriveEncryptionKey = (input: string): Buffer => {
   return crypto.createHash("sha256").update(input).digest();
 };
 
-// export const deriveEncryptionKey = (walletAddress: string, signature: string) => {
-//   const compositeKey = `${walletAddress}:${signature}`;
-//   // Use a KDF to derive a strong encryption key
-//   return crypto.createHash("sha256").update(compositeKey).digest();
-// };
-
 const normalizeKey = (key: Buffer | string): Buffer => {
   if (typeof key === "string") {
     // Derive a 32-byte key from the input string

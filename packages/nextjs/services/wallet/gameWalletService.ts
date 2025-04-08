@@ -61,8 +61,8 @@ export const sendMatchTransaction = async (
       transport,
     });
 
-    console.log(`Sending transaction from game wallet: ${account.address}`);
-    console.log(`Recording match at position (${x},${y}) with candy type ${candyType}`);
+    // console.log(`Sending transaction from game wallet: ${account.address}`);
+    // console.log(`Recording match at position (${x},${y}) with candy type ${candyType}`);
 
     // Send the transaction
     const hash = await walletClient.writeContract({
@@ -73,7 +73,7 @@ export const sendMatchTransaction = async (
       chain: monadTestnet,
     });
 
-    console.log("Transaction sent successfully:", hash);
+    //console.log("Transaction sent successfully:", hash);
     return hash;
   } catch (error) {
     console.error("Error sending match transaction:", error);
@@ -151,7 +151,6 @@ const processBatch = async (gameWalletPrivateKey: string) => {
 
     // Validate private key format right before use
     if (!/^0x[0-9a-fA-F]{64}$/.test(formattedPrivateKey)) {
-      console.error("Invalid private key format detected inside processBatch:", formattedPrivateKey);
       throw new Error("Invalid private key format inside processBatch");
     }
 

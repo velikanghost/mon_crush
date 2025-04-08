@@ -16,6 +16,7 @@ import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
 import { GameWalletDetails } from "~~/components/scaffold-eth/GameWalletDetails";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { initGameAudio, startBackgroundMusic, toggleBackgroundMusic } from "~~/services/audio/gameAudio";
+import { clearTxHashesFromDB } from "~~/services/indexeddb/transactionDB";
 import { initMatchSound } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
 import { decryptData, deriveEncryptionKey, encryptData } from "~~/services/utils/crypto";
@@ -101,23 +102,14 @@ export default function Home() {
           const savedWallet = localStorage.getItem(`gameWallet_${connectedAddress}`);
           if (savedWallet) {
             try {
-              console.log("Restoring wallet from localStorage...", savedWallet);
+              //console.log("Restoring wallet from localStorage...", savedWallet);
               const key = deriveEncryptionKey(signedMessage);
               const decryptedPrivateKey = decryptData(savedWallet, key);
-
-              console.log("Decryption successful, formatting private key...");
 
               // Ensure the decrypted private key is properly formatted
               const formattedPrivateKey = decryptedPrivateKey.startsWith("0x")
                 ? decryptedPrivateKey
                 : `0x${decryptedPrivateKey}`;
-
-              console.log(
-                "Restored private key format check:",
-                formattedPrivateKey.substring(0, 6) +
-                  "..." +
-                  formattedPrivateKey.substring(formattedPrivateKey.length - 4),
-              );
 
               const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
               setGameWallet(account);
@@ -278,11 +270,8 @@ export default function Home() {
         try {
           const savedWalletData = localStorage.getItem(`gameWallet_${connectedAddress}`);
           if (savedWalletData && signature) {
-            console.log("Retrieving game wallet private key from localStorage...");
             const key = deriveEncryptionKey(signature);
             const privateKey = decryptData(savedWalletData, key);
-
-            console.log("Successfully decrypted private key during game initialization");
 
             // Ensure the private key is properly formatted
             const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
@@ -327,8 +316,19 @@ export default function Home() {
       initAudio();
     }
 
+    // Reset the game
     if (gameStore.resetGame) {
       gameStore.resetGame();
+
+      // Clear transaction hashes from store
+      gameStore.setTxHashes([]);
+
+      // Clear transaction hashes from IndexedDB
+      clearTxHashesFromDB()
+        .then(() => console.log("Transaction hashes cleared from IndexedDB"))
+        .catch(error => console.error("Failed to clear transaction hashes from IndexedDB:", error));
+
+      toast.success("Game reset complete! Transaction history cleared.");
     }
   };
 

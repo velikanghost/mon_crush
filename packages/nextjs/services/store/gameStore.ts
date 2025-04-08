@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { getTxHashesFromDB } from "~~/services/indexeddb/transactionDB";
-import { CANDY_NAMES } from "~~/utils/helpers";
 
 export interface MatchData {
   x: number;
