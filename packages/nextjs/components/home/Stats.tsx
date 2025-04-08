@@ -42,6 +42,11 @@ const Stats = ({
         <div className="text-base md:text-2xl stat-value">{highScore}</div>
       </div>
 
+      <div className="stat">
+        <div className="stat-title">Matches sent</div>
+        <div className="text-base md:text-2xl stat-value">{txCount}</div>
+      </div>
+
       {scoreMultiplier > 1 && (
         <div className="stat">
           <div className="stat-title text-accent">Combo</div>

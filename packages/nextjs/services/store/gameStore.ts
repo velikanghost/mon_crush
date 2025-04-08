@@ -100,20 +100,36 @@ export const useGameStore = create<GameState>((set, get) => ({
   setScore: scoreOrUpdater => {
     set(state => {
       const newScore = typeof scoreOrUpdater === "function" ? scoreOrUpdater(state.score) : scoreOrUpdater;
+
+      // Update localStorage with the new score
+      if (typeof window !== "undefined") {
+        localStorage.setItem("monadMatchScore", newScore.toString());
+      }
+
+      // Check if this is a new high score
+      if (newScore > state.highScore) {
+        // Update high score in localStorage
+        if (typeof window !== "undefined") {
+          localStorage.setItem("monadMatchHighScore", newScore.toString());
+        }
+
+        // Return updated state with new score and high score
+        return {
+          score: newScore,
+          highScore: newScore,
+        };
+      }
+
+      // Otherwise just update the score
       return { score: newScore };
     });
-
-    // Save score to localStorage
-    if (typeof window !== "undefined") {
-      localStorage.setItem("candyCrushScore", get().score.toString());
-    }
   },
   setHighScore: score => {
     set({ highScore: score });
 
     // Save high score to localStorage
     if (typeof window !== "undefined") {
-      localStorage.setItem("candyCrushHighScore", score.toString());
+      localStorage.setItem("monadMatchHighScore", score.toString());
     }
   },
   setTxCount: countOrUpdater => {
@@ -124,7 +140,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Save tx count to localStorage
     if (typeof window !== "undefined") {
-      localStorage.setItem("candyCrushTxCount", get().txCount.toString());
+      localStorage.setItem("monadMatchTxCount", get().txCount.toString());
     }
   },
   setGameStatus: status => set({ gameStatus: status }),
@@ -168,18 +184,18 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Load high score from localStorage if available
     if (typeof window !== "undefined") {
-      const savedHighScore = localStorage.getItem("candyCrushHighScore");
+      const savedHighScore = localStorage.getItem("monadMatchHighScore");
       if (savedHighScore) {
         set({ highScore: parseInt(savedHighScore, 10) });
       }
 
       // Load score and txCount from localStorage if available
-      const savedScore = localStorage.getItem("candyCrushScore");
+      const savedScore = localStorage.getItem("monadMatchScore");
       if (savedScore) {
         set({ score: parseInt(savedScore, 10) });
       }
 
-      const savedTxCount = localStorage.getItem("candyCrushTxCount");
+      const savedTxCount = localStorage.getItem("monadMatchTxCount");
       if (savedTxCount) {
         set({ txCount: parseInt(savedTxCount, 10) });
       }
@@ -230,8 +246,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Update localStorage
     if (typeof window !== "undefined") {
-      localStorage.setItem("candyCrushScore", "0");
-      localStorage.setItem("candyCrushTxCount", "0");
+      localStorage.setItem("monadMatchScore", "0");
+      localStorage.setItem("monadMatchTxCount", "0");
     }
 
     // Re-initialize the board
