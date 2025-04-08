@@ -1,6 +1,9 @@
 import { MatchData } from "./gameStore";
 import { useGameStore } from "./gameStore";
 import { playComboSound, playMatchSound } from "~~/services/audio/gameAudio";
+import { addTxHashToDB } from "~~/services/indexeddb/transactionDB";
+import { extendUserSession } from "~~/services/utils/sessionStorage";
+import { sendBatchMatchTransactions } from "~~/services/wallet/gameWalletService";
 import { CANDY_NAMES } from "~~/utils/helpers";
 
 // Variable to store the refillBoard implementation
@@ -17,98 +20,60 @@ export const initMatchSound = () => {
   console.log("Match sound initialization now handled by gameAudio service");
 };
 
-// Helper function to POST matches to the relayer API
-export const postMatchesToRelayer = async (matchesToPost: MatchData[], address: string | undefined) => {
-  const { setGameStatus, setPendingTxCount, addTxHash, addVerificationId } = useGameStore.getState();
+// Helper function to process matches using game wallet instead of relayer
+export const processMatchesWithGameWallet = async (
+  matchesToProcess: MatchData[],
+  gameWalletPrivateKey: string | undefined,
+) => {
+  const { setGameStatus, setTxHashes } = useGameStore.getState();
 
-  if (!address) {
-    console.warn("Wallet not connected, skipping relayer call.");
-    setGameStatus("Connect wallet to save matches!");
-    return;
+  if (!gameWalletPrivateKey) {
+    console.warn("Game wallet private key not available, skipping transaction.");
+    setGameStatus("Game wallet not ready. Please connect wallet and generate a game wallet.");
+    return [];
   }
 
-  console.log(`Posting ${matchesToPost.length} matches to relayer for address ${address}...`);
+  if (matchesToProcess.length === 0) {
+    return [];
+  }
 
-  // Post each match individually (backend handles batching)
-  for (const match of matchesToPost) {
-    try {
-      const response = await fetch("/api/relayer/candymatch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          x: match.x,
-          y: match.y,
-          candyType: match.type,
-        }),
+  try {
+    console.log(`Processing ${matchesToProcess.length} matches with game wallet...`);
+
+    // Send batch transactions using the game wallet
+    const txHashes = await sendBatchMatchTransactions(gameWalletPrivateKey, matchesToProcess);
+
+    console.log(`Successfully sent ${txHashes.length} transactions`);
+    setGameStatus(`Sent ${txHashes.length} transactions to the blockchain!`);
+
+    // Update transaction hashes in the store
+    if (txHashes.length > 0) {
+      // Add tx hashes directly to the store
+      const { txHashes: currentHashes } = useGameStore.getState();
+      setTxHashes([...txHashes, ...currentHashes].slice(0, 100)); // Limit to 100 hashes for performance
+
+      // Save each hash to IndexedDB for persistence
+      txHashes.forEach(hash => {
+        addTxHashToDB(hash).catch(error => {
+          console.error("Failed to save transaction hash to IndexedDB:", error);
+        });
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Relayer response:", data.message);
-
-        // Update pending count based on the message (extract number)
-        const queueSizeMatch = data.message?.match(/Current queue size: (\d+)/);
-        if (queueSizeMatch && queueSizeMatch[1]) {
-          setPendingTxCount(parseInt(queueSizeMatch[1], 10));
-        }
-
-        // If a verification ID is returned, store it locally
-        if (data.verificationId) {
-          // Store the verification ID to later poll for the real hash
-          await addVerificationId(data.verificationId);
-          console.log(`Added verification ID to local storage: ${data.verificationId}`);
-
-          // Start polling for the real hash in the background
-          pollForRealHash(data.verificationId);
-        }
-      } else {
-        console.error("Error response from relayer:", await response.text());
-        setGameStatus("Error submitting match to relayer.");
-      }
-    } catch (error) {
-      console.error("Error posting match to relayer:", error);
-      setGameStatus("Network error submitting match.");
     }
+
+    return txHashes;
+  } catch (error) {
+    console.error("Error processing matches with game wallet:", error);
+    setGameStatus("Error submitting matches to blockchain. Try again later.");
+    return [];
   }
-};
-
-// Function to poll for real transaction hashes
-const pollForRealHash = async (verificationId: string, retries = 10, delay = 5000) => {
-  const { addTxHash } = useGameStore.getState();
-
-  // Try to get the real hash up to 'retries' times
-  for (let i = 0; i < retries; i++) {
-    try {
-      // Wait for 'delay' milliseconds between attempts
-      await new Promise(resolve => setTimeout(resolve, delay));
-
-      // Check if the real hash is available
-      const response = await fetch(`/api/relayer/candymatch?verificationId=${verificationId}`);
-
-      if (response.ok) {
-        const data = await response.json();
-
-        // If the hash was found and is valid, store it
-        if (data.found && data.hash) {
-          console.log(`Retrieved real transaction hash for verification ID ${verificationId}: ${data.hash}`);
-          await addTxHash(data.hash);
-          return; // Successfully got the hash, exit polling
-        }
-
-        console.log(`Hash for verification ID ${verificationId} not available yet. Retry ${i + 1}/${retries}`);
-      } else {
-        console.error("Error checking for transaction hash:", await response.text());
-      }
-    } catch (error) {
-      console.error("Error polling for transaction hash:", error);
-    }
-  }
-
-  console.warn(`Could not retrieve real hash for verification ID ${verificationId} after ${retries} attempts`);
 };
 
 // Process a chain match (automatic match after refill)
-export const processChainMatch = (board: number[][], chainMatches: MatchData[], address: string | undefined) => {
+export const processChainMatch = (
+  board: number[][],
+  chainMatches: MatchData[],
+  gameWalletPrivateKey: string | undefined,
+) => {
   const {
     comboCounter,
     scoreMultiplier,
@@ -122,7 +87,7 @@ export const processChainMatch = (board: number[][], chainMatches: MatchData[], 
     checkForMatchesInBoard,
   } = useGameStore.getState();
 
-  // Play combo sound instead of regular match sound for chain reactions
+  // Play combo sound for chain reactions with increasing intensity based on the chain count
   playComboSound(comboCounter + 1);
 
   // Increment combo counter
@@ -159,8 +124,10 @@ export const processChainMatch = (board: number[][], chainMatches: MatchData[], 
   // Update transaction count optimistically based on number of matches
   setTxCount(prev => prev + chainMatches.length);
 
-  // Post chain matches to the relayer
-  postMatchesToRelayer(chainMatches, address);
+  // Process matches with game wallet
+  if (gameWalletPrivateKey) {
+    processMatchesWithGameWallet(chainMatches, gameWalletPrivateKey);
+  }
 
   // Log debug info
   console.log(`CHAIN REACTION #${newComboCounter}: ${chainMatches.length} matches, multiplier: ${scoreMultiplier}`);
@@ -274,10 +241,9 @@ export const refillBoard = (board: number[][], checkForChainMatches = true) => {
         // If there are chain matches, process them
         if (chainMatches.length > 0) {
           console.log(`Found ${chainMatches.length} chain matches!`);
-          // FIX: Call processChainMatch with the current user's address
-          // Get the address from the gameStore
-          const address = useGameStore.getState().address;
-          processChainMatch(newBoard, chainMatches, address);
+          // FIX: Pass the game wallet private key, not the user's address
+          const { gameWalletPrivateKey } = useGameStore.getState();
+          processChainMatch(newBoard, chainMatches, gameWalletPrivateKey);
         } else {
           // No more chain matches, reset combo counter
           setComboCounter(0);
@@ -294,139 +260,127 @@ export const refillBoard = (board: number[][], checkForChainMatches = true) => {
 // Set refillBoard implementation for use by the debounced version
 realRefillBoardImpl = refillBoard;
 
+// Export a function to set the refillBoard implementation
+export const setRefillBoardImpl = (impl: (board: number[][], checkForChainMatches?: boolean) => void) => {
+  realRefillBoardImpl = impl;
+};
+
 // Handle candy click
-export const handleCandyClick = async (x: number, y: number, address: string | undefined) => {
+export const handleCandyClick = async (x: number, y: number) => {
   const {
     gameBoard,
     selectedCandy,
-    score,
-    highScore,
-    scoreMultiplier,
     setSelectedCandy,
-    setGameStatus,
     setMatches,
-    setComboCounter,
-    setScoreMultiplier,
-    setGameBoard,
     setScore,
-    setHighScore,
     setTxCount,
+    setGameStatus,
+    setGameBoard,
+    address,
+    gameWalletPrivateKey,
     checkForMatchesInBoard,
-    setAddress,
   } = useGameStore.getState();
 
-  // Store the address in the gameStore for chain reactions
-  if (address && setAddress) {
-    setAddress(address);
+  // Extend the user's session when they interact with the game
+  if (address) {
+    extendUserSession(address);
   }
 
-  const candyType = gameBoard[y][x];
-  if (candyType === 0) return;
-
+  // First click - select candy
   if (!selectedCandy) {
-    // First candy selected - reset combo counter for new move sequence
-    setComboCounter(0);
-    setScoreMultiplier(1);
-
     setSelectedCandy({ x, y });
-    setGameStatus(`Selected ${CANDY_NAMES[candyType as keyof typeof CANDY_NAMES]} at (${x},${y})`);
-  } else {
-    // Second candy selected - check if it's adjacent (horizontally or vertically only, not diagonally)
-    const isAdjacent =
-      (Math.abs(selectedCandy.x - x) === 1 && selectedCandy.y === y) || // Horizontal adjacency
-      (Math.abs(selectedCandy.y - y) === 1 && selectedCandy.x === x); // Vertical adjacency
-
-    if (isAdjacent) {
-      // Create a deep copy of the board for swapping
-      const newBoard = gameBoard.map(row => [...row]);
-
-      // Store original values
-      const firstCandy = newBoard[selectedCandy.y][selectedCandy.x];
-      const secondCandy = newBoard[y][x];
-
-      // Swap candies
-      newBoard[y][x] = firstCandy;
-      newBoard[selectedCandy.y][selectedCandy.x] = secondCandy;
-
-      // Update the game board
-      setGameBoard(newBoard);
-      setGameStatus(`Swapped candies! Checking for matches...`);
-
-      // Clear the selection immediately
-      setSelectedCandy(null);
-
-      // Check for matches directly on the newBoard
-      console.log("Checking for matches after swap");
-      const boardMatches = checkForMatchesInBoard(newBoard);
-
-      if (boardMatches.length > 0) {
-        // Play match sound
-        playMatchSound();
-
-        // Process matches immediately using the new board
-        setMatches(boardMatches);
-        setComboCounter(1);
-
-        // Clear matched candies
-        const updatedBoard = newBoard.map(row => [...row]);
-        boardMatches.forEach(match => {
-          updatedBoard[match.y][match.x] = 0;
-        });
-
-        setGameBoard(updatedBoard);
-        setGameStatus(`Found ${boardMatches.length} matches! Processing...`);
-
-        // Calculate score with multiplier
-        const basePoints = boardMatches.length * 10;
-        const pointsWithMultiplier = Math.floor(basePoints * scoreMultiplier);
-        const newScore = score + pointsWithMultiplier;
-
-        // Update score
-        setScore(newScore);
-
-        // Update transaction count optimistically
-        setTxCount(prev => prev + boardMatches.length);
-
-        // Update high score if needed
-        if (newScore > highScore) {
-          setHighScore(newScore);
-          // Save to localStorage
-          if (typeof window !== "undefined") {
-            const storageKey = address ? `candyCrushHighScore-${address}` : "candyCrushHighScore";
-            localStorage.setItem(storageKey, newScore.toString());
-            console.log(`Saved high score ${newScore} to localStorage with key ${storageKey}`);
-          }
-        }
-
-        // Post these initial matches to the relayer
-        postMatchesToRelayer(boardMatches, address);
-
-        // Trigger refill after a delay for animations/visibility
-        setTimeout(() => {
-          debouncedRefill(updatedBoard, true);
-        }, 600);
-      } else {
-        // If no match, swap back
-        console.log("No matches found, swapping back");
-        setGameStatus("No matches found. Swapping back.");
-
-        // Create a fresh copy for the swap back
-        const revertedBoard = newBoard.map(row => [...row]);
-
-        // Use original values for swapping back
-        revertedBoard[selectedCandy.y][selectedCandy.x] = firstCandy;
-        revertedBoard[y][x] = secondCandy;
-
-        setGameBoard(revertedBoard);
-
-        // Reset combo
-        setComboCounter(0);
-        setScoreMultiplier(1);
-      }
-    } else {
-      // Not adjacent (or diagonal), select the new candy instead
-      setSelectedCandy({ x, y });
-      setGameStatus(`Selected ${CANDY_NAMES[candyType as keyof typeof CANDY_NAMES]} at (${x},${y})`);
-    }
+    setGameStatus(`Selected ${CANDY_NAMES[gameBoard[y][x] as keyof typeof CANDY_NAMES]} at (${x},${y})`);
+    return;
   }
+
+  // Same candy clicked - deselect
+  if (selectedCandy.x === x && selectedCandy.y === y) {
+    setSelectedCandy(null);
+    setGameStatus("Deselected candy");
+    return;
+  }
+
+  // Second click - Check if it's adjacent to the selected candy
+  const isAdjacent =
+    (Math.abs(selectedCandy.x - x) === 1 && selectedCandy.y === y) ||
+    (Math.abs(selectedCandy.y - y) === 1 && selectedCandy.x === x);
+
+  if (!isAdjacent) {
+    setSelectedCandy({ x, y });
+    setGameStatus(
+      `Not adjacent. Selected ${CANDY_NAMES[gameBoard[y][x] as keyof typeof CANDY_NAMES]} at (${x},${y}) instead.`,
+    );
+    return;
+  }
+
+  // Try the swap to see if it creates a match
+  const newBoard = gameBoard.map(row => [...row]);
+  const tempCandy = newBoard[selectedCandy.y][selectedCandy.x];
+  newBoard[selectedCandy.y][selectedCandy.x] = newBoard[y][x];
+  newBoard[y][x] = tempCandy;
+
+  // Check for matches in the new board
+  const matches = checkForMatchesInBoard(newBoard);
+
+  // If no matches, revert the swap
+  if (matches.length === 0) {
+    setGameStatus("Invalid move - no matches would be created");
+    setSelectedCandy(null);
+    return;
+  }
+
+  // Valid swap - update UI with the swapped positions
+  setGameBoard(newBoard);
+  setSelectedCandy(null);
+
+  // Play match sound effect - always use match sound for direct matches regardless of size
+  playMatchSound();
+
+  // Update score based on match count
+  const basePoints = matches.length * 10;
+  setScore(prev => prev + basePoints);
+  setTxCount(prev => prev + matches.length);
+
+  // Mark matched candies in UI
+  setMatches(matches);
+
+  // Update status message
+  setGameStatus(`Matched ${matches.length} ${matches.length === 1 ? "candy" : "candies"} for ${basePoints} points!`);
+
+  // Now that we have matches, clear them from the board
+  const clearedBoard = newBoard.map(row => [...row]);
+  matches.forEach(match => {
+    clearedBoard[match.y][match.x] = 0;
+  });
+
+  // Process matches with game wallet
+  if (gameWalletPrivateKey) {
+    processMatchesWithGameWallet(matches, gameWalletPrivateKey);
+  } else {
+    console.warn("Game wallet private key not available. Matches will not be recorded on-chain.");
+  }
+
+  // Update the board after a small delay for better UX
+  setTimeout(() => {
+    // Update the board with cleared candies
+    setGameBoard(clearedBoard);
+
+    // After clearing, trigger a refill
+    setTimeout(() => {
+      console.log("Refilling board after clearing matches");
+      debouncedRefill(clearedBoard, true);
+    }, 300);
+  }, 300);
+};
+
+// Attach the handleCandyClick function to the game store
+export const initGameLogic = () => {
+  const { handleCandyClick } = useGameStore.getState();
+  const newHandleCandyClick = (x: number, y: number) => {
+    return handleCandyClick(x, y);
+  };
+  useGameStore.setState({ handleCandyClick: newHandleCandyClick });
+
+  // Initialize refillBoard implementation
+  realRefillBoardImpl = refillBoard;
 };

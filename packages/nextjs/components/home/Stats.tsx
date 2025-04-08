@@ -20,7 +20,6 @@ const Stats = ({
     score: storeScore,
     highScore: storeHighScore,
     txCount: storeTxCount,
-    pendingTxCount,
     scoreMultiplier,
     comboCounter,
   } = useGameStore();
@@ -43,10 +42,9 @@ const Stats = ({
         <div className="text-base md:text-2xl stat-value">{highScore}</div>
       </div>
 
-      <div className="stat" onClick={handleOpenDrawer} style={{ cursor: "pointer" }}>
-        <div className="stat-title">Matches Sent</div>
+      <div className="stat">
+        <div className="stat-title">Matches sent</div>
         <div className="text-base md:text-2xl stat-value">{txCount}</div>
-        {pendingTxCount > 0 && <div className="text-xs stat-desc text-info">~{pendingTxCount} pending</div>}
       </div>
 
       {scoreMultiplier > 1 && (

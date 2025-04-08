@@ -274,22 +274,29 @@ export function playComboSound(comboCount: number): void {
     const baseNote = "C4";
     const comboNotes: string[] = [];
 
-    // Create different notes based on combo count
-    if (comboCount <= 3) {
+    // Create different patterns based on combo count
+    if (comboCount < 3) {
       // Simple ascending arpeggio for small combos
       comboNotes.push(baseNote, "E4", "G4");
-    } else if (comboCount <= 6) {
-      // More exciting arpeggio for medium combos
-      comboNotes.push(baseNote, "E4", "G4", "B4", "D5");
+    } else if (comboCount < 6) {
+      // More exciting arpeggio for medium combos - higher third note
+      comboNotes.push(baseNote, "E4", "A4", "B4", "D5");
+    } else if (comboCount < 9) {
+      // Even more exciting for larger combos - even higher third note
+      comboNotes.push(baseNote, "E4", "B4", "D5", "F5", "A5");
     } else {
-      // Major scale run for big combos
-      comboNotes.push(baseNote, "D4", "E4", "F4", "G4", "A4", "B4", "C5");
+      // Full scale run with highest third note for massive combos
+      comboNotes.push(baseNote, "E4", "C5", "F5", "G5", "A5", "B5", "C6");
     }
 
     // Play the notes as an arpeggio
     const now = Tone.now();
     comboNotes.forEach((note, index) => {
-      comboSynth?.triggerAttackRelease(note, "16n", now + index * 0.08, 0.5 + Math.min(0.4, comboCount * 0.05));
+      // Increase velocity (volume) based on combo count for more emphasis
+      const velocity = 0.5 + Math.min(0.45, comboCount * 0.05);
+      // Slightly faster arpeggio for higher combos
+      const speed = Math.max(0.05, 0.08 - comboCount * 0.005);
+      comboSynth?.triggerAttackRelease(note, "16n", now + index * speed, velocity);
     });
   } catch (error) {
     console.error("Error playing combo sound:", error);

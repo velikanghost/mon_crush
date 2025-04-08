@@ -30,7 +30,7 @@ const Board = ({
     if (propsHandleCandyClick) {
       propsHandleCandyClick(x, y);
     } else {
-      await handleCandyClick(x, y, address);
+      await handleCandyClick(x, y);
     }
   };
 

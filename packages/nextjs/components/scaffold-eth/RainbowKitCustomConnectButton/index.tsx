@@ -27,7 +27,7 @@ export const RainbowKitCustomConnectButton = () => {
           : undefined;
 
         return (
-          <>
+          <div className="absolute top-[4%] right-9">
             {(() => {
               if (!connected) {
                 return (
@@ -43,12 +43,12 @@ export const RainbowKitCustomConnectButton = () => {
 
               return (
                 <>
-                  <div className="flex flex-col items-center mr-1">
-                    <Balance address={account.address as Address} className="min-h-0 h-auto" />
+                  {/* <div className="flex flex-col items-center mr-1">
+                    <Balance address={account.address as Address} className="h-auto min-h-0" />
                     <span className="text-xs" style={{ color: networkColor }}>
                       {chain.name}
                     </span>
-                  </div>
+                  </div> */}
                   <AddressInfoDropdown
                     address={account.address as Address}
                     displayName={account.displayName}
@@ -59,7 +59,7 @@ export const RainbowKitCustomConnectButton = () => {
                 </>
               );
             })()}
-          </>
+          </div>
         );
       }}
     </ConnectButton.Custom>

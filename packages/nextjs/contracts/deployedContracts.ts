@@ -6,36 +6,8 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 
 const deployedContracts = {
   10143: {
-    YourContract: {
-      address: "0xa74a05f1c1558b43297d4bce97cad44c0eb51a22",
-      abi: [
-        {
-          type: "function",
-          name: "counter",
-          inputs: [],
-          outputs: [
-            {
-              name: "",
-              type: "uint256",
-              internalType: "uint256",
-            },
-          ],
-          stateMutability: "view",
-        },
-        {
-          type: "function",
-          name: "increment",
-          inputs: [],
-          outputs: [],
-          stateMutability: "nonpayable",
-        },
-      ],
-      inheritedFunctions: {},
-      deploymentFile: "run-1741888563.json",
-      deploymentScript: "Deploy.s.sol",
-    },
-    CandyCrushGame: {
-      address: "0xbe1fa364a5325fb30f4b8e3ecdc889c59303638a",
+    MonadMatch: {
+      address: "0x9f4f21d74f78e7b76559f6657d0a6ee2e1a0d71c",
       abi: [
         {
           type: "function",
@@ -154,24 +126,76 @@ const deployedContracts = {
         },
         {
           type: "function",
-          name: "getCandyAt",
+          name: "gameWalletCount",
           inputs: [
             {
-              name: "x",
-              type: "uint8",
-              internalType: "uint8",
-            },
-            {
-              name: "y",
-              type: "uint8",
-              internalType: "uint8",
+              name: "",
+              type: "address",
+              internalType: "address",
             },
           ],
           outputs: [
             {
-              name: "candyType",
-              type: "uint8",
-              internalType: "uint8",
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "gameWalletToMainWallet",
+          inputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getGameWallets",
+          inputs: [
+            {
+              name: "mainWallet",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "gameWallets",
+              type: "address[]",
+              internalType: "address[]",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getMainWallet",
+          inputs: [
+            {
+              name: "gameWallet",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "mainWallet",
+              type: "address",
+              internalType: "address",
             },
           ],
           stateMutability: "view",
@@ -197,6 +221,30 @@ const deployedContracts = {
         },
         {
           type: "function",
+          name: "getMonanimalAt",
+          inputs: [
+            {
+              name: "x",
+              type: "uint8",
+              internalType: "uint8",
+            },
+            {
+              name: "y",
+              type: "uint8",
+              internalType: "uint8",
+            },
+          ],
+          outputs: [
+            {
+              name: "monanimalType",
+              type: "uint8",
+              internalType: "uint8",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
           name: "getPlayerScore",
           inputs: [
             {
@@ -210,6 +258,73 @@ const deployedContracts = {
               name: "score",
               type: "uint256",
               internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "isWalletLinked",
+          inputs: [
+            {
+              name: "gameWallet",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "mainWallet",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "isLinked",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "linkGameWallet",
+          inputs: [
+            {
+              name: "gameWallet",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "success",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "mainWalletToGameWallets",
+          inputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
             },
           ],
           stateMutability: "view",
@@ -267,7 +382,7 @@ const deployedContracts = {
               internalType: "uint8",
             },
             {
-              name: "candyType",
+              name: "monanimalType",
               type: "uint8",
               internalType: "uint8",
             },
@@ -296,7 +411,39 @@ const deployedContracts = {
         },
         {
           type: "event",
-          name: "CandyMatched",
+          name: "GameBoardUpdated",
+          inputs: [
+            {
+              name: "board",
+              type: "uint8[8][8]",
+              indexed: false,
+              internalType: "uint8[8][8]",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "GameWalletLinked",
+          inputs: [
+            {
+              name: "mainWallet",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "gameWallet",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "MonanimalMatched",
           inputs: [
             {
               name: "player",
@@ -317,23 +464,10 @@ const deployedContracts = {
               internalType: "uint8",
             },
             {
-              name: "candyType",
+              name: "monanimalType",
               type: "uint8",
               indexed: false,
               internalType: "uint8",
-            },
-          ],
-          anonymous: false,
-        },
-        {
-          type: "event",
-          name: "GameBoardUpdated",
-          inputs: [
-            {
-              name: "board",
-              type: "uint8[8][8]",
-              indexed: false,
-              internalType: "uint8[8][8]",
             },
           ],
           anonymous: false,
@@ -359,7 +493,7 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deploymentFile: "run-1741888912.json",
+      deploymentFile: "run-1744040383.json",
       deploymentScript: "Deploy.s.sol",
     },
   },
