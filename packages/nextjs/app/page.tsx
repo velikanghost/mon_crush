@@ -96,7 +96,7 @@ export default function Home() {
       return;
     }
 
-    const message = `Sign this message to generate or restore your Monad Match game wallet. Nonce: ${Date.now()}`;
+    const message = `Sign this message to generate or restore your Monad Match game wallet`;
 
     signMessage(
       { message },
@@ -105,24 +105,36 @@ export default function Home() {
           const savedWallet = localStorage.getItem(`gameWallet_${connectedAddress}`);
           if (savedWallet) {
             try {
+              console.log("Restoring wallet from localStorage...", savedWallet);
               const key = deriveEncryptionKey(signedMessage);
               const decryptedPrivateKey = decryptData(savedWallet, key);
-              if (decryptedPrivateKey) {
-                const account = privateKeyToAccount(decryptedPrivateKey as `0x${string}`);
-                setGameWallet(account);
-                console.log("Restored game wallet:", account.address);
-                setGameWalletFunded(true); // Assume funded if restored, can add balance check later
 
-                // Store the private key and address in the game store for transaction signing
-                gameStore.setGameWalletPrivateKey(decryptedPrivateKey);
-                gameStore.setGameWalletAddress(account.address);
+              console.log("Decryption successful, formatting private key...");
 
-                setCurrentStep(3); // Go directly to game
-                setSignature(signedMessage); // Store signature for potential future use
-                toast.success("Game wallet restored!");
-              } else {
-                throw new Error("Decryption failed");
-              }
+              // Ensure the decrypted private key is properly formatted
+              const formattedPrivateKey = decryptedPrivateKey.startsWith("0x")
+                ? decryptedPrivateKey
+                : `0x${decryptedPrivateKey}`;
+
+              console.log(
+                "Restored private key format check:",
+                formattedPrivateKey.substring(0, 6) +
+                  "..." +
+                  formattedPrivateKey.substring(formattedPrivateKey.length - 4),
+              );
+
+              const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
+              setGameWallet(account);
+              console.log("Restored game wallet:", account.address);
+              setGameWalletFunded(true); // Assume funded if restored
+
+              // Store in game store for transaction signing
+              gameStore.setGameWalletPrivateKey(formattedPrivateKey);
+              gameStore.setGameWalletAddress(account.address);
+
+              setCurrentStep(3); // Go directly to game
+              setSignature(signedMessage); // Store signature for future use
+              toast.success("Game wallet restored!");
             } catch (error) {
               console.error("Failed to restore game wallet:", error);
               toast.error("Failed to restore wallet. Generating a new one.");
@@ -161,6 +173,7 @@ export default function Home() {
       gameStore.setGameWalletPrivateKey(privateKey);
       gameStore.setGameWalletAddress(account.address);
 
+      // Encrypt and store the private key
       const key = deriveEncryptionKey(signature);
       const encryptedPrivateKey = encryptData(privateKey, key);
       localStorage.setItem(`gameWallet_${connectedAddress}`, encryptedPrivateKey);
@@ -270,12 +283,17 @@ export default function Home() {
         try {
           const savedWalletData = localStorage.getItem(`gameWallet_${connectedAddress}`);
           if (savedWalletData && signature) {
+            console.log("Retrieving game wallet private key from localStorage...");
             const key = deriveEncryptionKey(signature);
             const privateKey = decryptData(savedWalletData, key);
-            if (privateKey) {
-              gameStore.setGameWalletPrivateKey(privateKey);
-              gameStore.setGameWalletAddress(gameWallet.address);
-            }
+
+            console.log("Successfully decrypted private key during game initialization");
+
+            // Ensure the private key is properly formatted
+            const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+
+            gameStore.setGameWalletPrivateKey(formattedPrivateKey);
+            gameStore.setGameWalletAddress(gameWallet.address);
           }
         } catch (error) {
           console.error("Failed to retrieve game wallet private key:", error);

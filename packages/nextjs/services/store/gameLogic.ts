@@ -1,6 +1,7 @@
 import { MatchData } from "./gameStore";
 import { useGameStore } from "./gameStore";
 import { playComboSound, playMatchSound } from "~~/services/audio/gameAudio";
+import { addTxHashToDB } from "~~/services/indexeddb/transactionDB";
 import { sendBatchMatchTransactions } from "~~/services/wallet/gameWalletService";
 import { CANDY_NAMES } from "~~/utils/helpers";
 
@@ -49,6 +50,13 @@ export const processMatchesWithGameWallet = async (
       // Add tx hashes directly to the store
       const { txHashes: currentHashes } = useGameStore.getState();
       setTxHashes([...txHashes, ...currentHashes].slice(0, 100)); // Limit to 100 hashes for performance
+
+      // Save each hash to IndexedDB for persistence
+      txHashes.forEach(hash => {
+        addTxHashToDB(hash).catch(error => {
+          console.error("Failed to save transaction hash to IndexedDB:", error);
+        });
+      });
     }
 
     return txHashes;

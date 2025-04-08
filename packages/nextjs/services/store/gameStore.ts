@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { getTxHashesFromDB } from "~~/services/indexeddb/transactionDB";
 import { CANDY_NAMES } from "~~/utils/helpers";
 
 export interface MatchData {
@@ -182,6 +183,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (savedTxCount) {
         set({ txCount: parseInt(savedTxCount, 10) });
       }
+
+      // Load transaction hashes from IndexedDB
+      set({ isLoadingHashes: true });
+      getTxHashesFromDB()
+        .then(hashes => {
+          if (hashes && hashes.length > 0) {
+            set({ txHashes: hashes });
+            console.log(`Loaded ${hashes.length} transaction hashes from IndexedDB`);
+          }
+        })
+        .catch(error => {
+          console.error("Failed to load transaction hashes from IndexedDB:", error);
+        })
+        .finally(() => {
+          set({ isLoadingHashes: false });
+        });
     }
 
     // Initialize the game board
