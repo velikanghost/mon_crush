@@ -25,7 +25,7 @@ const CANDY_NAMES = {
   5: "Pixel",
 };
 
-// Image paths for candy types
+// Image paths for monanimal types
 const CANDY_IMAGES = {
   1: "/monad.png", // MONAD hat creature
   2: "/hedgehog.png", // Purple hedgehog
