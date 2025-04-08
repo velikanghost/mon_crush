@@ -7,19 +7,15 @@ import { parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { useAccount } from "wagmi";
 import { useSendTransaction, useSignMessage } from "wagmi";
-import { HeartIcon, MusicalNoteIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/outline";
+import { SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/outline";
 import { SwitchTheme } from "~~/components/SwitchTheme";
 import Board from "~~/components/home/Board";
 import Stats from "~~/components/home/Stats";
 import ZustandDrawer from "~~/components/home/ZustandDrawer";
-import { DirectConnectWallet } from "~~/components/scaffold-eth/DirectConnectWallet";
+import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
+import { GameWalletDetails } from "~~/components/scaffold-eth/GameWalletDetails";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
-import {
-  initGameAudio,
-  startBackgroundMusic,
-  stopBackgroundMusic,
-  toggleBackgroundMusic,
-} from "~~/services/audio/gameAudio";
+import { initGameAudio, startBackgroundMusic, toggleBackgroundMusic } from "~~/services/audio/gameAudio";
 import { initMatchSound } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
 import { decryptData, deriveEncryptionKey, encryptData } from "~~/services/utils/crypto";
@@ -132,7 +128,7 @@ export default function Home() {
               gameStore.setGameWalletPrivateKey(formattedPrivateKey);
               gameStore.setGameWalletAddress(account.address);
 
-              setCurrentStep(3); // Go directly to game
+              setCurrentStep(4); // Go directly to game (was step 3)
               setSignature(signedMessage); // Store signature for future use
               toast.success("Game wallet restored!");
             } catch (error) {
@@ -140,11 +136,11 @@ export default function Home() {
               toast.error("Failed to restore wallet. Generating a new one.");
               localStorage.removeItem(`gameWallet_${connectedAddress}`); // Clear invalid data
               setSignature(signedMessage); // Keep signature
-              setCurrentStep(1); // Proceed to generate new wallet
+              setCurrentStep(2); // Proceed to generate new wallet (was step 1)
             }
           } else {
             setSignature(signedMessage); // Store signature for generation
-            setCurrentStep(1); // Proceed to generate a new game wallet
+            setCurrentStep(2); // Proceed to generate a new game wallet (was step 1)
             toast.success("Sign message successful. Ready to generate game wallet.");
           }
         },
@@ -160,7 +156,7 @@ export default function Home() {
   const generateGameWallet = async () => {
     if (!signature || !connectedAddress) {
       toast.error("Signature is missing. Please sign the message again.");
-      setCurrentStep(0); // Go back to signing step
+      setCurrentStep(1); // Go back to signing step (was step 0)
       return;
     }
 
@@ -179,7 +175,7 @@ export default function Home() {
       localStorage.setItem(`gameWallet_${connectedAddress}`, encryptedPrivateKey);
       console.log("Generated and encrypted game wallet:", account.address);
       toast.success("New game wallet generated!");
-      setCurrentStep(2); // Move to funding step
+      setCurrentStep(3); // Move to funding step (was step 2)
     } catch (error) {
       console.error("Error generating game wallet:", error);
       toast.error("Failed to generate game wallet.");
@@ -196,7 +192,7 @@ export default function Home() {
     // Check if already linked
     if (mainWalletForGameWallet === connectedAddress) {
       toast.success("Game wallet already linked to this main wallet.");
-      setCurrentStep(3); // Move to game if already linked
+      setCurrentStep(4); // Move to game if already linked (was step 3)
       return;
     }
     // Check if linked to another main wallet (should ideally not happen with current logic)
@@ -212,7 +208,7 @@ export default function Home() {
         args: [gameWallet.address],
       });
       toast.success("Game wallet successfully linked on-chain!");
-      setCurrentStep(3); // Move to the game playing step
+      setCurrentStep(4); // Move to the game playing step (was step 3)
     } catch (error: any) {
       console.error("Error linking game wallet:", error);
       toast.error(`Failed to link game wallet: ${error.message || error}`);
@@ -250,10 +246,9 @@ export default function Home() {
     if (isConnected && connectedAddress) {
       // Attempt to restore wallet automatically on connect if signature exists
       const savedWallet = localStorage.getItem(`gameWallet_${connectedAddress}`);
-      // We need a signature to decrypt, so prompt user to sign first.
-      // Automatic restoration requires storing the signature or prompting on load.
-      // For now, we require manual signing first.
-      setCurrentStep(0); // Start at signing step when main wallet connects
+
+      // If wallet is connected, start at sign message step
+      setCurrentStep(1); // Step 1 is now Sign Message
 
       // Initialize game store basics
       if (gameStore.setAddress) {
@@ -264,7 +259,7 @@ export default function Home() {
       // Reset state if wallet disconnects
       setGameWallet(null);
       setGameWalletFunded(false);
-      setCurrentStep(0);
+      setCurrentStep(0); // Start at connect wallet step
       setSignature("");
       // Optionally clear stored wallet on disconnect?
       // localStorage.removeItem(`gameWallet_${connectedAddress}`);
@@ -272,9 +267,9 @@ export default function Home() {
     // Dependencies ensure this runs when connection state changes
   }, [isConnected, connectedAddress, gameStore.setAddress]);
 
-  // Existing useEffect for game init - Now conditional on game wallet being ready (Step 3)
+  // Existing useEffect for game init - Now conditional on game wallet being ready (Step 4)
   useEffect(() => {
-    if (currentStep === 3 && gameWallet && connectedAddress) {
+    if (currentStep === 4 && gameWallet && connectedAddress) {
       // Initialize the actual game logic only when wallet is ready and linked
       if (gameStore.initGame) {
         console.log("Initializing game with main address:", connectedAddress, "and game wallet:", gameWallet.address);
@@ -346,24 +341,36 @@ export default function Home() {
 
   // Conditional Rendering based on the current step
   const renderStepContent = () => {
+    // If wallet is connected, skip the connect wallet step
+    if (currentStep === 0 && isConnected) {
+      setCurrentStep(1);
+    }
+
     switch (currentStep) {
-      case 0: // Sign Message Step
+      case 0: // Connect Wallet Step
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Step 1: Verify Ownership</h3>
+            <h3 className="text-xl font-semibold">Step 1: Connect Wallet</h3>
+            <p className="text-center">Connect your wallet to get started with Monad Match.</p>
+            <RainbowKitCustomConnectButton />
+          </div>
+        );
+      case 1: // Sign Message Step (was step 0 before)
+        return (
+          <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
+            <h3 className="text-xl font-semibold">Step 2: Verify Ownership</h3>
             <p className="text-center">
               Sign a message with your main wallet to generate or restore your secure game wallet.
             </p>
-            <button className="btn btn-primary" onClick={handleSignMessage} disabled={!isConnected}>
+            <button className="btn btn-primary" onClick={handleSignMessage}>
               Sign Message
             </button>
-            {!isConnected && <p className="mt-2 text-sm text-warning">Please connect your main wallet above.</p>}
           </div>
         );
-      case 1: // Generate Wallet Step (Only shown if no wallet found after signing)
+      case 2: // Generate Wallet Step (was step 1 before)
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Step 2: Generate Game Wallet</h3>
+            <h3 className="text-xl font-semibold">Step 3: Generate Game Wallet</h3>
             <p className="text-center">
               No existing game wallet found for this address. Click below to generate a new one.
             </p>
@@ -372,10 +379,10 @@ export default function Home() {
             </button>
           </div>
         );
-      case 2: // Fund Wallet Step
+      case 3: // Fund Wallet Step (was step 2 before)
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Step 3: Fund Your Game Wallet</h3>
+            <h3 className="text-xl font-semibold">Step 4: Fund Your Game Wallet</h3>
             <p className="text-center">
               Deposit a small amount of DMON to your new game wallet ({gameWallet?.address.slice(0, 6)}...
               {gameWallet?.address.slice(-4)}) to cover transaction fees.
@@ -403,7 +410,7 @@ export default function Home() {
             </button>
           </div>
         );
-      case 3: // Play Game (Main Game UI)
+      case 4: // Play Game (Main Game UI) (was step 3 before)
         return (
           <>
             {/* Left Column - Game Title and Stats */}
@@ -411,9 +418,6 @@ export default function Home() {
               <div className="mb-4 pl-9">
                 <div className="text-3xl font-bold">Monad Match</div>
                 <div className="mt-2 text-base opacity-70">Match monanimals to earn points!</div>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Game Wallet: {gameWallet?.address.slice(0, 6)}...{gameWallet?.address.slice(-4)}
-                </p>
               </div>
 
               {/* Game Status Messages */}
@@ -434,7 +438,36 @@ export default function Home() {
               )}
             </div>
 
-            {/* Right Column - Wallet & Buttons are handled outside this switch */}
+            {/* Right Column - Wallet Details */}
+            <div className="w-[25%] flex flex-col pr-9 space-y-4 pt-12">
+              <RainbowKitCustomConnectButton />
+              {/* Wallet Info & Actions */}
+              <div className="p-4 rounded-lg shadow-md bg-base-100">
+                <GameWalletDetails />
+              </div>
+
+              {/* Game Controls */}
+              <div className="flex flex-col w-full gap-3">
+                <div className="flex gap-2">
+                  <button className="flex-1 btn btn-primary" onClick={handleResetGame}>
+                    Reset Game
+                  </button>
+                  <button
+                    className="btn btn-circle btn-secondary"
+                    onClick={handleToggleMusic}
+                    title={musicPlaying ? "Mute Music" : "Play Music"}
+                  >
+                    {musicPlaying ? <SpeakerWaveIcon className="w-5 h-5" /> : <SpeakerXMarkIcon className="w-5 h-5" />}
+                  </button>
+                </div>
+                <button
+                  className="flex flex-row items-center justify-center btn btn-accent btn-outline"
+                  onClick={handleOpenDrawer}
+                >
+                  Transaction History
+                </button>
+              </div>
+            </div>
           </>
         );
       default:
@@ -444,88 +477,43 @@ export default function Home() {
 
   return (
     <>
-      {/* Main Layout - Fixed height, no scrolling */}
-      <div className="flex justify-between overflow-hidden mt-[2%] gap-6">
-        {/* Conditional Rendering for Steps or Game */}
-        {currentStep < 3 ? (
-          <div className="flex items-center justify-center w-full">
-            {" "}
-            {/* Centering container for steps */}
-            {renderStepContent()}
-          </div>
-        ) : (
-          renderStepContent() // Render game layout for step 3
-        )}
-
-        {/* Right Column - Always visible for Wallet connection and basic controls */}
-        {currentStep < 3 ? (
-          // Simplified Right Column for Setup Steps
-          <div className="w-[25%] flex flex-col pr-9 space-y-4">
-            <div className="p-4 rounded-lg shadow-md bg-base-100">
-              <DirectConnectWallet />
-            </div>
-            {/* Add other non-game controls if needed during setup */}
-          </div>
-        ) : (
-          // Full Right Column for Game Play (Step 3)
-          <div className="w-[25%] flex flex-col pr-9 space-y-4">
-            {/* Wallet Info & Actions */}
-            <div className="p-4 rounded-lg shadow-md bg-base-100">
-              <DirectConnectWallet />
-              {/* Optionally show Game Wallet balance here if needed */}
-            </div>
-
-            {/* Game Controls */}
-            <div className="flex flex-col w-full gap-3">
-              <div className="flex gap-2">
-                <button className="flex-1 btn btn-primary" onClick={handleResetGame}>
-                  Reset Game
-                </button>
-                <button
-                  className="btn btn-circle btn-secondary"
-                  onClick={handleToggleMusic}
-                  title={musicPlaying ? "Mute Music" : "Play Music"}
-                >
-                  {musicPlaying ? <SpeakerWaveIcon className="w-5 h-5" /> : <SpeakerXMarkIcon className="w-5 h-5" />}
-                </button>
-              </div>
-              <button
-                className="flex flex-row items-center justify-center btn btn-accent btn-outline"
-                onClick={handleOpenDrawer}
-              >
-                {/* SVG Icon */}
-                Transaction History
-              </button>
-              {/* Add button to view/copy private key if desired (USE WITH CAUTION) */}
-              {/* <button className="btn btn-xs btn-warning" onClick={copyPrivateKey}>Copy Game Private Key (Debug)</button> */}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between mt-4 px-9">
-        <div></div>
-        <div className="flex items-center justify-center gap-2 text-xs pl-9">
-          <p className="">Built by</p>
-          <a
-            className="flex items-center justify-center gap-1 underline underline-offset-2"
-            href="https://x.com/velkan_gst"
-            target="_blank"
-            rel="noreferrer"
-          >
-            velkan_gst
-          </a>
-          <p>using</p>
-          <a
-            className="flex items-center justify-center gap-1 underline underline-offset-2"
-            href="https://scaffoldeth.io"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Scaffold-ETH 2
-          </a>
+      {/* Main container with min-height to ensure footer stays at bottom */}
+      <div className="flex flex-col min-h-screen">
+        {/* Main Layout - Fixed height, no scrolling */}
+        <div className="flex justify-between overflow-hidden mt-[2%] gap-6 flex-grow">
+          {/* Conditional Rendering for Steps or Game */}
+          {currentStep < 4 ? (
+            <div className="flex items-center justify-center w-full">{renderStepContent()}</div>
+          ) : (
+            renderStepContent() // Render game layout for step 4
+          )}
         </div>
-        <SwitchTheme className={`pointer-events-auto`} />
+
+        {/* Footer - Now sticks to bottom */}
+        <div className="flex items-center justify-between py-4 mt-auto border-t px-9 border-base-300">
+          <div></div>
+          <div className="flex items-center justify-center gap-2 text-xs pl-9">
+            <p className="">Built by</p>
+            <a
+              className="flex items-center justify-center gap-1 underline underline-offset-2"
+              href="https://x.com/velkan_gst"
+              target="_blank"
+              rel="noreferrer"
+            >
+              velkan_gst
+            </a>
+            <p>using</p>
+            <a
+              className="flex items-center justify-center gap-1 underline underline-offset-2"
+              href="https://scaffoldeth.io"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Scaffold-ETH 2
+            </a>
+          </div>
+          <SwitchTheme className={`pointer-events-auto`} />
+        </div>
       </div>
 
       {/* Transaction History Drawer */}

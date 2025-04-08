@@ -47,13 +47,13 @@ export const AddressInfoDropdown = ({
 
   return (
     <>
-      <details ref={dropdownRef} className="dropdown dropdown-end leading-3">
+      <details ref={dropdownRef} className="w-full leading-3 dropdown dropdown-end">
         <summary tabIndex={0} className="btn btn-secondary btn-sm pl-0 pr-2 shadow-md dropdown-toggle gap-0 !h-auto">
           <BlockieAvatar address={checkSumAddress} size={30} ensImage={ensAvatar} />
           <span className="ml-2 mr-1">
             {isENS(displayName) ? displayName : checkSumAddress?.slice(0, 6) + "..." + checkSumAddress?.slice(-4)}
           </span>
-          <ChevronDownIcon className="h-6 w-4 ml-2 sm:ml-0" />
+          <ChevronDownIcon className="w-4 h-6 ml-2 sm:ml-0" />
         </summary>
         <ul
           tabIndex={0}
@@ -64,7 +64,7 @@ export const AddressInfoDropdown = ({
             {addressCopied ? (
               <div className="btn-sm !rounded-xl flex gap-3 py-3">
                 <CheckCircleIcon
-                  className="text-xl font-normal h-6 w-4 cursor-pointer ml-2 sm:ml-0"
+                  className="w-4 h-6 ml-2 text-xl font-normal cursor-pointer sm:ml-0"
                   aria-hidden="true"
                 />
                 <span className=" whitespace-nowrap">Copy address</span>
@@ -81,7 +81,7 @@ export const AddressInfoDropdown = ({
               >
                 <div className="btn-sm !rounded-xl flex gap-3 py-3">
                   <DocumentDuplicateIcon
-                    className="text-xl font-normal h-6 w-4 cursor-pointer ml-2 sm:ml-0"
+                    className="w-4 h-6 ml-2 text-xl font-normal cursor-pointer sm:ml-0"
                     aria-hidden="true"
                   />
                   <span className=" whitespace-nowrap">Copy address</span>
@@ -91,13 +91,13 @@ export const AddressInfoDropdown = ({
           </li>
           <li className={selectingNetwork ? "hidden" : ""}>
             <label htmlFor="qrcode-modal" className="btn-sm !rounded-xl flex gap-3 py-3">
-              <QrCodeIcon className="h-6 w-4 ml-2 sm:ml-0" />
+              <QrCodeIcon className="w-4 h-6 ml-2 sm:ml-0" />
               <span className="whitespace-nowrap">View QR Code</span>
             </label>
           </li>
           <li className={selectingNetwork ? "hidden" : ""}>
             <button className="menu-item btn-sm !rounded-xl flex gap-3 py-3" type="button">
-              <ArrowTopRightOnSquareIcon className="h-6 w-4 ml-2 sm:ml-0" />
+              <ArrowTopRightOnSquareIcon className="w-4 h-6 ml-2 sm:ml-0" />
               <a
                 target="_blank"
                 href={blockExplorerAddressLink}
@@ -117,7 +117,7 @@ export const AddressInfoDropdown = ({
                   setSelectingNetwork(true);
                 }}
               >
-                <ArrowsRightLeftIcon className="h-6 w-4 ml-2 sm:ml-0" /> <span>Switch Network</span>
+                <ArrowsRightLeftIcon className="w-4 h-6 ml-2 sm:ml-0" /> <span>Switch Network</span>
               </button>
             </li>
           ) : null}
@@ -127,7 +127,7 @@ export const AddressInfoDropdown = ({
               type="button"
               onClick={() => disconnect()}
             >
-              <ArrowLeftOnRectangleIcon className="h-6 w-4 ml-2 sm:ml-0" /> <span>Disconnect</span>
+              <ArrowLeftOnRectangleIcon className="w-4 h-6 ml-2 sm:ml-0" /> <span>Disconnect</span>
             </button>
           </li>
         </ul>
