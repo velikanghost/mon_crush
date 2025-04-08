@@ -350,7 +350,7 @@ export default function Home() {
       case 0: // Connect Wallet Step
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Step 1: Connect Wallet</h3>
+            <h3 className="text-xl font-semibold">Connect Wallet</h3>
             <p className="text-center">Connect your wallet to get started with Monad Match.</p>
             <RainbowKitCustomConnectButton />
           </div>
@@ -358,7 +358,7 @@ export default function Home() {
       case 1: // Sign Message Step (was step 0 before)
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Step 2: Verify Ownership</h3>
+            <h3 className="text-xl font-semibold">Verify Ownership</h3>
             <p className="text-center">
               Sign a message with your main wallet to generate or restore your secure game wallet.
             </p>
@@ -370,7 +370,7 @@ export default function Home() {
       case 2: // Generate Wallet Step (was step 1 before)
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Step 3: Generate Game Wallet</h3>
+            <h3 className="text-xl font-semibold">Generate Game Wallet</h3>
             <p className="text-center">
               No existing game wallet found for this address. Click below to generate a new one.
             </p>
@@ -382,9 +382,9 @@ export default function Home() {
       case 3: // Fund Wallet Step (was step 2 before)
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Step 4: Fund Your Game Wallet</h3>
+            <h3 className="text-xl font-semibold">Fund Your Game Wallet</h3>
             <p className="text-center">
-              Deposit a small amount of DMON to your new game wallet ({gameWallet?.address.slice(0, 6)}...
+              Deposit a small amount of MON to your new game wallet ({gameWallet?.address.slice(0, 6)}...
               {gameWallet?.address.slice(-4)}) to cover transaction fees.
             </p>
             <div className="flex items-center gap-2">
@@ -396,7 +396,7 @@ export default function Home() {
                 min="0.001"
                 step="0.001"
               />
-              <span>DMON</span>
+              <span>MON</span>
             </div>
             <button className="w-full btn btn-accent" onClick={depositTokens} disabled={!gameWallet}>
               Deposit Funds & Link Wallet

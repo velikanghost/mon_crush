@@ -86,7 +86,7 @@ export const processChainMatch = (
     checkForMatchesInBoard,
   } = useGameStore.getState();
 
-  // Play combo sound instead of regular match sound for chain reactions
+  // Play combo sound for chain reactions with increasing intensity based on the chain count
   playComboSound(comboCounter + 1);
 
   // Increment combo counter
@@ -327,12 +327,8 @@ export const handleCandyClick = async (x: number, y: number) => {
   setGameBoard(newBoard);
   setSelectedCandy(null);
 
-  // Play match sound effect
-  if (matches.length >= 4) {
-    playComboSound(matches.length);
-  } else {
-    playMatchSound();
-  }
+  // Play match sound effect - always use match sound for direct matches regardless of size
+  playMatchSound();
 
   // Update score based on match count
   const basePoints = matches.length * 10;
