@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { LocalAccount } from "viem";
 import { parseEther } from "viem";
@@ -20,6 +20,8 @@ import { clearTxHashesFromDB } from "~~/services/indexeddb/transactionDB";
 import { initMatchSound } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
 import { decryptData, deriveEncryptionKey, encryptData } from "~~/services/utils/crypto";
+import { clearUserSession, getUserSession, storeUserSession } from "~~/services/utils/sessionStorage";
+import { extendUserSession } from "~~/services/utils/sessionStorage";
 
 export default function Home() {
   const { address: connectedAddress, isConnected } = useAccount();
@@ -35,6 +37,9 @@ export default function Home() {
   const [signature, setSignature] = useState<string>("");
   const { signMessage } = useSignMessage();
   const { sendTransactionAsync } = useSendTransaction();
+
+  // Ref to track previous connected address for disconnect detection
+  const previousAddressRef = useRef<string | undefined>(undefined);
 
   // Get on-chain high score for the connected address
   const { data: onChainHighScore } = useScaffoldReadContract({
@@ -93,48 +98,28 @@ export default function Home() {
       return;
     }
 
+    // Check if we have a valid session - if so, use it instead of asking for signature
+    const existingSignature = getUserSession(connectedAddress);
+    if (existingSignature) {
+      console.log("Using existing session signature");
+      toast.success("Using existing session (valid for 3 days)");
+
+      // Process the existing signature
+      processSignature(existingSignature);
+      return;
+    }
+
     const message = `Sign this message to generate or restore your Monad Match game wallet`;
 
     signMessage(
       { message },
       {
         onSuccess: signedMessage => {
-          const savedWallet = localStorage.getItem(`gameWallet_${connectedAddress}`);
-          if (savedWallet) {
-            try {
-              //console.log("Restoring wallet from localStorage...", savedWallet);
-              const key = deriveEncryptionKey(signedMessage);
-              const decryptedPrivateKey = decryptData(savedWallet, key);
+          // Store the signature for 3-day session persistence
+          storeUserSession(connectedAddress, signedMessage);
 
-              // Ensure the decrypted private key is properly formatted
-              const formattedPrivateKey = decryptedPrivateKey.startsWith("0x")
-                ? decryptedPrivateKey
-                : `0x${decryptedPrivateKey}`;
-
-              const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
-              setGameWallet(account);
-              console.log("Restored game wallet:", account.address);
-              setGameWalletFunded(true); // Assume funded if restored
-
-              // Store in game store for transaction signing
-              gameStore.setGameWalletPrivateKey(formattedPrivateKey);
-              gameStore.setGameWalletAddress(account.address);
-
-              setCurrentStep(4); // Go directly to game (was step 3)
-              setSignature(signedMessage); // Store signature for future use
-              toast.success("Game wallet restored!");
-            } catch (error) {
-              console.error("Failed to restore game wallet:", error);
-              toast.error("Failed to restore wallet. Generating a new one.");
-              localStorage.removeItem(`gameWallet_${connectedAddress}`); // Clear invalid data
-              setSignature(signedMessage); // Keep signature
-              setCurrentStep(2); // Proceed to generate new wallet (was step 1)
-            }
-          } else {
-            setSignature(signedMessage); // Store signature for generation
-            setCurrentStep(2); // Proceed to generate a new game wallet (was step 1)
-            toast.success("Sign message successful. Ready to generate game wallet.");
-          }
+          // Process the signature
+          processSignature(signedMessage);
         },
         onError: error => {
           console.error("Signing failed", error);
@@ -142,6 +127,46 @@ export default function Home() {
         },
       },
     );
+  };
+
+  // Helper function to process signature (extracted to avoid code duplication)
+  const processSignature = (signedMessage: string) => {
+    const savedWallet = localStorage.getItem(`gameWallet_${connectedAddress}`);
+    if (savedWallet) {
+      try {
+        //console.log("Restoring wallet from localStorage...", savedWallet);
+        const key = deriveEncryptionKey(signedMessage);
+        const decryptedPrivateKey = decryptData(savedWallet, key);
+
+        // Ensure the decrypted private key is properly formatted
+        const formattedPrivateKey = decryptedPrivateKey.startsWith("0x")
+          ? decryptedPrivateKey
+          : `0x${decryptedPrivateKey}`;
+
+        const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
+        setGameWallet(account);
+        console.log("Restored game wallet:", account.address);
+        setGameWalletFunded(true); // Assume funded if restored
+
+        // Store in game store for transaction signing
+        gameStore.setGameWalletPrivateKey(formattedPrivateKey);
+        gameStore.setGameWalletAddress(account.address);
+
+        setCurrentStep(4); // Go directly to game (was step 3)
+        setSignature(signedMessage); // Store signature for future use
+        toast.success("Game wallet restored!");
+      } catch (error) {
+        console.error("Failed to restore game wallet:", error);
+        toast.error("Failed to restore wallet. Generating a new one.");
+        localStorage.removeItem(`gameWallet_${connectedAddress}`); // Clear invalid data
+        setSignature(signedMessage); // Keep signature
+        setCurrentStep(2); // Proceed to generate new wallet (was step 1)
+      }
+    } else {
+      setSignature(signedMessage); // Store signature for generation
+      setCurrentStep(2); // Proceed to generate a new game wallet (was step 1)
+      toast.success("Sign message successful. Ready to generate game wallet.");
+    }
   };
 
   // Function to generate a new game wallet
@@ -235,26 +260,44 @@ export default function Home() {
 
   // Initialize game when component mounts and main wallet is connected
   useEffect(() => {
-    if (isConnected && connectedAddress) {
-      // Attempt to restore wallet automatically on connect if signature exists
-      const savedWallet = localStorage.getItem(`gameWallet_${connectedAddress}`);
+    // Check for disconnect by comparing previous and current state
+    const wasConnected = previousAddressRef.current !== undefined;
+    const isDisconnect = wasConnected && !isConnected;
 
-      // If wallet is connected, start at sign message step
-      setCurrentStep(1); // Step 1 is now Sign Message
+    // Handle disconnect case
+    if (isDisconnect && previousAddressRef.current) {
+      console.log("Wallet disconnected, clearing session");
+      clearUserSession(previousAddressRef.current);
+      previousAddressRef.current = undefined;
+    }
+
+    if (isConnected && connectedAddress) {
+      // Update ref with current address
+      previousAddressRef.current = connectedAddress;
+
+      // Attempt to restore session automatically on connect
+      const sessionSignature = getUserSession(connectedAddress);
+
+      if (sessionSignature) {
+        // If we have a valid session, process it automatically
+        console.log("Found valid session, automatically restoring game wallet");
+        processSignature(sessionSignature);
+      } else {
+        // If wallet is connected but no session, start at sign message step
+        setCurrentStep(1); // Step 1 is now Sign Message
+      }
 
       // Initialize game store basics
       if (gameStore.setAddress) {
         gameStore.setAddress(connectedAddress); // Set main address in store
       }
       initMatchSound(); // Initialize sounds
-    } else {
-      // Reset state if wallet disconnects
+    } else if (!isConnected) {
+      // Reset state if wallet is not connected
       setGameWallet(null);
       setGameWalletFunded(false);
       setCurrentStep(0); // Start at connect wallet step
       setSignature("");
-      // Optionally clear stored wallet on disconnect?
-      // localStorage.removeItem(`gameWallet_${connectedAddress}`);
     }
     // Dependencies ensure this runs when connection state changes
   }, [isConnected, connectedAddress, gameStore.setAddress]);
@@ -310,34 +353,65 @@ export default function Home() {
   };
 
   // Handle game reset
-  const handleResetGame = () => {
-    // Also initialize audio on first interaction
-    if (!audioInitialized) {
-      initAudio();
+  const handleResetGame = async () => {
+    // Extend user session when they reset the game
+    if (connectedAddress) {
+      extendUserSession(connectedAddress);
     }
 
-    // Reset the game
     if (gameStore.resetGame) {
       gameStore.resetGame();
 
-      // Clear transaction hashes from store
+      // Clear transaction hashes from zustand store
       gameStore.setTxHashes([]);
 
       // Clear transaction hashes from IndexedDB
-      clearTxHashesFromDB()
-        .then(() => console.log("Transaction hashes cleared from IndexedDB"))
-        .catch(error => console.error("Failed to clear transaction hashes from IndexedDB:", error));
-
-      toast.success("Game reset complete! Transaction history cleared.");
+      try {
+        await clearTxHashesFromDB();
+        toast.success("Game reset! Transaction history cleared.");
+      } catch (error) {
+        console.error("Error clearing transaction history:", error);
+      }
     }
   };
 
   // Handle board click to initialize audio
   const handleBoardClick = () => {
+    // Extend user session when they interact with the game
+    if (connectedAddress) {
+      extendUserSession(connectedAddress);
+    }
+
     if (!audioInitialized) {
       initAudio();
     }
   };
+
+  // Effect to handle page refresh/load session check
+  useEffect(() => {
+    // This effect only runs once on mount to handle page refresh scenarios
+    const handlePageRefresh = async () => {
+      if (isConnected && connectedAddress) {
+        console.log("Page loaded/refreshed with connected wallet, checking session");
+
+        // Check for valid session
+        const sessionSignature = getUserSession(connectedAddress);
+        if (sessionSignature) {
+          console.log("Found valid session on page refresh");
+
+          // Extend the session on page load
+          extendUserSession(connectedAddress);
+
+          // Process the signature to restore wallet
+          processSignature(sessionSignature);
+        }
+      }
+    };
+
+    handlePageRefresh();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   // Conditional Rendering based on the current step
   const renderStepContent = () => {

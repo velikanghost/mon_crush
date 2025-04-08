@@ -2,6 +2,7 @@ import { MatchData } from "./gameStore";
 import { useGameStore } from "./gameStore";
 import { playComboSound, playMatchSound } from "~~/services/audio/gameAudio";
 import { addTxHashToDB } from "~~/services/indexeddb/transactionDB";
+import { extendUserSession } from "~~/services/utils/sessionStorage";
 import { sendBatchMatchTransactions } from "~~/services/wallet/gameWalletService";
 import { CANDY_NAMES } from "~~/utils/helpers";
 
@@ -279,6 +280,11 @@ export const handleCandyClick = async (x: number, y: number) => {
     gameWalletPrivateKey,
     checkForMatchesInBoard,
   } = useGameStore.getState();
+
+  // Extend the user's session when they interact with the game
+  if (address) {
+    extendUserSession(address);
+  }
 
   // First click - select candy
   if (!selectedCandy) {
