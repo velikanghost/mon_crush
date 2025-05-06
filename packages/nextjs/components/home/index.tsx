@@ -542,31 +542,23 @@ export default function Home() {
             {/* Top Row - Game Title and Stats */}
             <div className="flex flex-row items-center justify-between w-full px-4 py-2 mb-2">
               <div className="flex flex-col">
-                <div className="text-2xl font-bold">Monad Match</div>
+                <div className="text-xl font-bold">Monad Match</div>
                 <div className="text-sm opacity-70">Match monanimals to earn points!</div>
                 {gameStore.gameStatus && (
-                  <div className="mt-1 text-sm text-accent animate-pulse">{gameStore.gameStatus}</div>
+                  <div className="mt-1 text-xs text-accent animate-pulse">{gameStore.gameStatus}</div>
                 )}
               </div>
 
               {/* Controls */}
               <div className="flex items-center gap-2">
-                <button
-                  className="btn btn-circle btn-sm btn-secondary"
-                  onClick={handleToggleMusic}
-                  title={musicPlaying ? "Mute Music" : "Play Music"}
-                >
-                  {musicPlaying ? <SpeakerWaveIcon className="w-4 h-4" /> : <SpeakerXMarkIcon className="w-4 h-4" />}
-                </button>
-
-                <button className="btn btn-primary btn-sm" onClick={handleResetGame}>
-                  Reset
-                </button>
-
-                {/* Drawer toggle button */}
-                <label htmlFor="wallet-drawer" className="btn btn-accent btn-sm">
-                  Wallet
-                </label>
+                {/* Farcaster Profile */}
+                {farcasterUser && (
+                  <label htmlFor="wallet-drawer" className="flex items-center rounded-full">
+                    {farcasterUser.pfpUrl && (
+                      <img src={farcasterUser.pfpUrl} className="w-8 h-8 rounded-full" alt="Farcaster Profile" />
+                    )}
+                  </label>
+                )}
               </div>
             </div>
 
@@ -581,9 +573,14 @@ export default function Home() {
             </div>
 
             {/* Game Board - Full Width */}
-            <div className="flex items-center justify-center flex-grow w-full px-2" onClick={handleBoardClick}>
+            <div className="flex flex-col items-center justify-center flex-grow w-full px-2" onClick={handleBoardClick}>
               {gameWallet && gameStore.gameBoard ? (
-                <Board />
+                <>
+                  <Board />
+                  <button className="h-8 px-4 mt-4 btn btn-primary btn-sm" onClick={handleResetGame}>
+                    Reset
+                  </button>
+                </>
               ) : (
                 <div className="text-xl text-center">Initializing Game Board...</div>
               )}
@@ -594,7 +591,7 @@ export default function Home() {
               <input id="wallet-drawer" type="checkbox" className="drawer-toggle" />
               <div className="z-50 drawer-side">
                 <label htmlFor="wallet-drawer" className="drawer-overlay"></label>
-                <div className="flex flex-col min-h-full p-4 w-80 bg-base-200 text-base-content">
+                <div className="flex flex-col w-full min-h-full p-4 bg-base-200 text-base-content">
                   {/* Drawer Header */}
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-bold">Wallet & Transactions</h3>
@@ -610,6 +607,17 @@ export default function Home() {
                         <img src={farcasterUser.pfpUrl} className="w-8 h-8 rounded-full" alt="Farcaster Profile" />
                       )}
                       <div className="text-sm font-medium">{farcasterUser.displayName || farcasterUser.username}</div>
+                      <button
+                        className="btn btn-circle btn-sm btn-secondary"
+                        onClick={handleToggleMusic}
+                        title={musicPlaying ? "Mute Music" : "Play Music"}
+                      >
+                        {musicPlaying ? (
+                          <SpeakerWaveIcon className="w-4 h-4" />
+                        ) : (
+                          <SpeakerXMarkIcon className="w-4 h-4" />
+                        )}
+                      </button>
                     </div>
                   )}
 
@@ -679,9 +687,8 @@ export default function Home() {
         </div>
 
         {/* Footer - Now sticks to bottom */}
-        <div className="flex items-center justify-between py-4 mt-auto border-t px-9 border-base-300">
-          <div></div>
-          <div className="flex items-center justify-center gap-2 text-xs pl-9">
+        <div className="flex items-center justify-between px-4 py-1 mt-auto border-t border-base-300">
+          <div className="flex items-center justify-center gap-2 text-xs">
             <p className="">Built by</p>
             <a
               className="flex items-center justify-center gap-1 underline underline-offset-2"

@@ -27,7 +27,7 @@ export const RainbowKitCustomConnectButton = () => {
           : undefined;
 
         return (
-          <div className="absolute top-[4%] right-9">
+          <div className="my-1">
             {(() => {
               if (!connected) {
                 return (
