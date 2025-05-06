@@ -1,8 +1,5 @@
-import { APP_URL } from "@/lib/constants";
-import {
-  SendNotificationRequest,
-  sendNotificationResponseSchema,
-} from "@farcaster/frame-sdk";
+import { SendNotificationRequest, sendNotificationResponseSchema } from "@farcaster/frame-sdk";
+import { APP_URL } from "~~/lib/constants";
 
 type SendFrameNotificationResult =
   | {
