@@ -5,10 +5,10 @@ export async function GET() {
   const farcasterConfig = {
     accountAssociation: {
       header:
-        "eyJmaWQiOjE3OTc5LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4MGMxNWE5QkVmRTg3RjY0N0IwMDNhMjI0MTY4NDYwMzYyODQ0M2Y4YiJ9",
-      payload: "eyJkb21haW4iOiJtb25hZC1taW5pYXBwLXRlbXBsYXRlLXNldmVuLnZlcmNlbC5hcHAifQ",
+        "eyJmaWQiOjUxODMzOCwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDI0QjcyODlhZTRkN0FEZTY3QjdmMzgzNDFFYjc4Yzc3NjAyODIxOTUifQ",
+      payload: "eyJkb21haW4iOiJtb24tY3J1c2gtbmV4dGpzLnZlcmNlbC5hcHAifQ",
       signature:
-        "MHgwYzY2NDdjZDhjOWJiY2JmYzg2NGIzZjVjYWVjY2ExMTdlOTY4ZGQwMWIzMmM0NGViMjU5ZDhlOGQyMzdhZTZiMDU1MmNmNWRiMDU1MDMwNTZmNTNhZmEwZDZlZTBlZmIyMmJmNDNmMDQ4NTdhMzk2NmY0YmMzODk2N2NlZDI5ZjFi",
+        "MHhiZTU3YTdhY2U5YjI2ODkyYmE0MjBkMzU4NzgzMDQ0Njc5MzIwNTNjMTU2MDkzNTcxNTVhNTA3YTlkOTg5YjIwMTJhY2U1NDFjYTg0Njg0Y2EyODYwZDNhMjUxMTcyOTFkNDc4NDJmYzU5YjVkYmFiNTkwOWJhNWQ3MmZiYWIzNjFj",
     },
     frame: {
       version: "1",
@@ -17,9 +17,9 @@ export async function GET() {
       homeUrl: `${APP_URL}`,
       imageUrl: `${APP_URL}/images/feed.png`,
       screenshotUrls: [],
-      tags: ["monad", "farcaster", "miniapp", "template"],
+      tags: ["monad", "farcaster", "miniapp"],
       primaryCategory: "developer-tools",
-      buttonTitle: "Launch Template",
+      buttonTitle: "Launch App",
       splashImageUrl: `${APP_URL}/images/splash.png`,
       splashBackgroundColor: "#ffffff",
       webhookUrl: `${APP_URL}/api/webhook`,
