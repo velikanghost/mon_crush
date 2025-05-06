@@ -1,16 +1,13 @@
-import { SafeAreaInsets } from "@/types";
+import { SafeAreaInsets } from "~~/types";
 
 interface SafeAreaContainerProps {
   children: React.ReactNode;
   insets?: SafeAreaInsets;
 }
 
-export const SafeAreaContainer = ({
-  children,
-  insets,
-}: SafeAreaContainerProps) => (
+export const SafeAreaContainer = ({ children, insets }: SafeAreaContainerProps) => (
   <main
-    className="flex min-h-screen flex-col items-center justify-center gap-y-3"
+    className="flex flex-col items-center justify-center min-h-screen gap-y-3"
     style={{
       marginTop: insets?.top ?? 0,
       marginBottom: insets?.bottom ?? 0,

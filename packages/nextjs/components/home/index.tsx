@@ -10,11 +10,14 @@ import { useSendTransaction, useSignMessage } from "wagmi";
 import { SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/outline";
 import { SwitchTheme } from "~~/components/SwitchTheme";
 import Board from "~~/components/home/Board";
+import { FarcasterActions } from "~~/components/home/FarcasterActions";
 import Stats from "~~/components/home/Stats";
+import { User } from "~~/components/home/User";
 import ZustandDrawer from "~~/components/home/ZustandDrawer";
 import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
 import { GameWalletDetails } from "~~/components/scaffold-eth/GameWalletDetails";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { useMiniAppContext } from "~~/hooks/use-miniapp-context";
 import { initGameAudio, startBackgroundMusic, toggleBackgroundMusic } from "~~/services/audio/gameAudio";
 import { clearTxHashesFromDB } from "~~/services/indexeddb/transactionDB";
 import { initMatchSound } from "~~/services/store/gameLogic";
@@ -25,6 +28,10 @@ import { extendUserSession } from "~~/services/utils/sessionStorage";
 
 export default function Home() {
   const { address: connectedAddress, isConnected } = useAccount();
+  const { context: farcasterContext, actions: farcasterActions } = useMiniAppContext();
+  const farcasterUser = farcasterContext?.user;
+  const isFarcasterConnected = !!farcasterUser;
+
   const gameStore = useGameStore();
   const [musicPlaying, setMusicPlaying] = useState(false);
   const [audioInitialized, setAudioInitialized] = useState(false);
@@ -33,13 +40,14 @@ export default function Home() {
   const [gameWallet, setGameWallet] = useState<LocalAccount | null>(null);
   const [depositAmount, setDepositAmount] = useState("0.01"); // Default deposit amount
   const [gameWalletFunded, setGameWalletFunded] = useState<boolean>(false);
-  const [currentStep, setCurrentStep] = useState<number>(0); // 0: Connect, 1: Sign, 2: Fund, 3: Play
+  const [currentStep, setCurrentStep] = useState<number>(0); // 0: Connect Farcaster, 1: Connect Wallet, 2: Sign, 3: Fund, 4: Play
   const [signature, setSignature] = useState<string>("");
   const { signMessage } = useSignMessage();
   const { sendTransactionAsync } = useSendTransaction();
 
   // Ref to track previous connected address for disconnect detection
   const previousAddressRef = useRef<string | undefined>(undefined);
+  const previousFidRef = useRef<number | undefined>(undefined);
 
   // Get on-chain high score for the connected address
   const { data: onChainHighScore } = useScaffoldReadContract({
@@ -98,28 +106,31 @@ export default function Home() {
       return;
     }
 
+    // Create a unique identifier combining Farcaster FID and wallet address
+    const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
+
     // Check if we have a valid session - if so, use it instead of asking for signature
-    const existingSignature = getUserSession(connectedAddress);
+    const existingSignature = getUserSession(userIdentifier);
     if (existingSignature) {
       console.log("Using existing session signature");
       toast.success("Using existing session (valid for 3 days)");
 
       // Process the existing signature
-      processSignature(existingSignature);
+      processSignature(existingSignature, userIdentifier);
       return;
     }
 
-    const message = `Sign this message to generate or restore your Monad Match game wallet`;
+    const message = `Sign this message to generate or restore your Monad Match game wallet for Farcaster user ${farcasterUser?.username || "unknown"}`;
 
     signMessage(
       { message },
       {
         onSuccess: signedMessage => {
           // Store the signature for 3-day session persistence
-          storeUserSession(connectedAddress, signedMessage);
+          storeUserSession(userIdentifier, signedMessage);
 
           // Process the signature
-          processSignature(signedMessage);
+          processSignature(signedMessage, userIdentifier);
         },
         onError: error => {
           console.error("Signing failed", error);
@@ -130,8 +141,8 @@ export default function Home() {
   };
 
   // Helper function to process signature (extracted to avoid code duplication)
-  const processSignature = (signedMessage: string) => {
-    const savedWallet = localStorage.getItem(`gameWallet_${connectedAddress}`);
+  const processSignature = (signedMessage: string, userIdentifier: string) => {
+    const savedWallet = localStorage.getItem(`gameWallet_${userIdentifier}`);
     if (savedWallet) {
       try {
         //console.log("Restoring wallet from localStorage...", savedWallet);
@@ -152,19 +163,19 @@ export default function Home() {
         gameStore.setGameWalletPrivateKey(formattedPrivateKey);
         gameStore.setGameWalletAddress(account.address);
 
-        setCurrentStep(4); // Go directly to game (was step 3)
+        setCurrentStep(4); // Go directly to game
         setSignature(signedMessage); // Store signature for future use
         toast.success("Game wallet restored!");
       } catch (error) {
         console.error("Failed to restore game wallet:", error);
         toast.error("Failed to restore wallet. Generating a new one.");
-        localStorage.removeItem(`gameWallet_${connectedAddress}`); // Clear invalid data
+        localStorage.removeItem(`gameWallet_${userIdentifier}`); // Clear invalid data
         setSignature(signedMessage); // Keep signature
-        setCurrentStep(2); // Proceed to generate new wallet (was step 1)
+        setCurrentStep(2); // Proceed to generate new wallet
       }
     } else {
       setSignature(signedMessage); // Store signature for generation
-      setCurrentStep(2); // Proceed to generate a new game wallet (was step 1)
+      setCurrentStep(2); // Proceed to generate a new game wallet
       toast.success("Sign message successful. Ready to generate game wallet.");
     }
   };
@@ -173,11 +184,14 @@ export default function Home() {
   const generateGameWallet = async () => {
     if (!signature || !connectedAddress) {
       toast.error("Signature is missing. Please sign the message again.");
-      setCurrentStep(1); // Go back to signing step (was step 0)
+      setCurrentStep(1); // Go back to signing step
       return;
     }
 
     try {
+      // Create a unique identifier combining Farcaster FID and wallet address
+      const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
+
       const privateKey = generatePrivateKey();
       const account = privateKeyToAccount(privateKey);
       setGameWallet(account);
@@ -189,10 +203,10 @@ export default function Home() {
       // Encrypt and store the private key
       const key = deriveEncryptionKey(signature);
       const encryptedPrivateKey = encryptData(privateKey, key);
-      localStorage.setItem(`gameWallet_${connectedAddress}`, encryptedPrivateKey);
+      localStorage.setItem(`gameWallet_${userIdentifier}`, encryptedPrivateKey);
       console.log("Generated and encrypted game wallet:", account.address);
       toast.success("New game wallet generated!");
-      setCurrentStep(3); // Move to funding step (was step 2)
+      setCurrentStep(3); // Move to funding step
     } catch (error) {
       console.error("Error generating game wallet:", error);
       toast.error("Failed to generate game wallet.");
@@ -209,7 +223,7 @@ export default function Home() {
     // Check if already linked
     if (mainWalletForGameWallet === connectedAddress) {
       toast.success("Game wallet already linked to this main wallet.");
-      setCurrentStep(4); // Move to game if already linked (was step 3)
+      setCurrentStep(4); // Move to game if already linked
       return;
     }
     // Check if linked to another main wallet (should ideally not happen with current logic)
@@ -225,7 +239,7 @@ export default function Home() {
         args: [gameWallet.address],
       });
       toast.success("Game wallet successfully linked on-chain!");
-      setCurrentStep(4); // Move to the game playing step (was step 3)
+      setCurrentStep(4); // Move to the game playing step
     } catch (error: any) {
       console.error("Error linking game wallet:", error);
       toast.error(`Failed to link game wallet: ${error.message || error}`);
@@ -258,30 +272,55 @@ export default function Home() {
     }
   };
 
-  // Initialize game when component mounts and main wallet is connected
+  // Initialize game when component mounts and Farcaster user is connected
   useEffect(() => {
     // Check for disconnect by comparing previous and current state
     const wasConnected = previousAddressRef.current !== undefined;
     const isDisconnect = wasConnected && !isConnected;
 
+    const wasFarcasterConnected = previousFidRef.current !== undefined;
+    const isFarcasterDisconnect = wasFarcasterConnected && !isFarcasterConnected;
+
     // Handle disconnect case
-    if (isDisconnect && previousAddressRef.current) {
-      console.log("Wallet disconnected, clearing session");
-      clearUserSession(previousAddressRef.current);
+    if ((isDisconnect && previousAddressRef.current) || (isFarcasterDisconnect && previousFidRef.current)) {
+      console.log("Wallet or Farcaster disconnected, clearing session");
+
+      if (previousAddressRef.current) {
+        const userIdentifier = previousFidRef.current
+          ? `${previousFidRef.current}_${previousAddressRef.current}`
+          : previousAddressRef.current;
+        clearUserSession(userIdentifier);
+      }
+
       previousAddressRef.current = undefined;
+      previousFidRef.current = undefined;
+    }
+
+    // If Farcaster is connected, we can move to next step
+    if (isFarcasterConnected && farcasterUser) {
+      // Update FID ref
+      previousFidRef.current = farcasterUser.fid;
+
+      // Move to the "Connect Wallet" step if we're on the initial connection step
+      if (currentStep === 0) {
+        setCurrentStep(1); // Move to "Connect Wallet" step
+      }
     }
 
     if (isConnected && connectedAddress) {
-      // Update ref with current address
+      // Update wallet address ref
       previousAddressRef.current = connectedAddress;
 
+      // Create user identifier using Farcaster FID if available
+      const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
+
       // Attempt to restore session automatically on connect
-      const sessionSignature = getUserSession(connectedAddress);
+      const sessionSignature = getUserSession(userIdentifier);
 
       if (sessionSignature) {
         // If we have a valid session, process it automatically
         console.log("Found valid session, automatically restoring game wallet");
-        processSignature(sessionSignature);
+        processSignature(sessionSignature, userIdentifier);
       } else {
         // If wallet is connected but no session, start at sign message step
         setCurrentStep(1); // Step 1 is now Sign Message
@@ -292,15 +331,12 @@ export default function Home() {
         gameStore.setAddress(connectedAddress); // Set main address in store
       }
       initMatchSound(); // Initialize sounds
-    } else if (!isConnected) {
-      // Reset state if wallet is not connected
-      setGameWallet(null);
-      setGameWalletFunded(false);
-      setCurrentStep(0); // Start at connect wallet step
-      setSignature("");
+    } else if (!isConnected && currentStep > 0) {
+      // Keep Farcaster connection but reset wallet-related state
+      setCurrentStep(1); // Go back to "Connect Wallet" step
     }
     // Dependencies ensure this runs when connection state changes
-  }, [isConnected, connectedAddress, gameStore.setAddress]);
+  }, [isConnected, connectedAddress, gameStore.setAddress, isFarcasterConnected, farcasterUser, currentStep]);
 
   // Existing useEffect for game init - Now conditional on game wallet being ready (Step 4)
   useEffect(() => {
@@ -311,7 +347,10 @@ export default function Home() {
 
         // Get the private key from localStorage since the gameWallet object doesn't expose it
         try {
-          const savedWalletData = localStorage.getItem(`gameWallet_${connectedAddress}`);
+          // Create user identifier using Farcaster FID if available
+          const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
+
+          const savedWalletData = localStorage.getItem(`gameWallet_${userIdentifier}`);
           if (savedWalletData && signature) {
             const key = deriveEncryptionKey(signature);
             const privateKey = decryptData(savedWalletData, key);
@@ -338,6 +377,7 @@ export default function Home() {
     gameStore.setGameWalletPrivateKey,
     gameStore.setGameWalletAddress,
     signature,
+    farcasterUser,
   ]);
 
   // Prepare handleOpenDrawer function for Stats
@@ -356,7 +396,9 @@ export default function Home() {
   const handleResetGame = async () => {
     // Extend user session when they reset the game
     if (connectedAddress) {
-      extendUserSession(connectedAddress);
+      // Create user identifier using Farcaster FID if available
+      const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
+      extendUserSession(userIdentifier);
     }
 
     if (gameStore.resetGame) {
@@ -379,7 +421,9 @@ export default function Home() {
   const handleBoardClick = () => {
     // Extend user session when they interact with the game
     if (connectedAddress) {
-      extendUserSession(connectedAddress);
+      // Create user identifier using Farcaster FID if available
+      const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
+      extendUserSession(userIdentifier);
     }
 
     if (!audioInitialized) {
@@ -391,19 +435,22 @@ export default function Home() {
   useEffect(() => {
     // This effect only runs once on mount to handle page refresh scenarios
     const handlePageRefresh = async () => {
-      if (isConnected && connectedAddress) {
-        console.log("Page loaded/refreshed with connected wallet, checking session");
+      if (isConnected && connectedAddress && farcasterUser) {
+        console.log("Page loaded/refreshed with connected wallet and Farcaster, checking session");
+
+        // Create user identifier using Farcaster FID if available
+        const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
 
         // Check for valid session
-        const sessionSignature = getUserSession(connectedAddress);
+        const sessionSignature = getUserSession(userIdentifier);
         if (sessionSignature) {
           console.log("Found valid session on page refresh");
 
           // Extend the session on page load
-          extendUserSession(connectedAddress);
+          extendUserSession(userIdentifier);
 
           // Process the signature to restore wallet
-          processSignature(sessionSignature);
+          processSignature(sessionSignature, userIdentifier);
         }
       }
     };
@@ -415,45 +462,50 @@ export default function Home() {
 
   // Conditional Rendering based on the current step
   const renderStepContent = () => {
-    // If wallet is connected, skip the connect wallet step
-    if (currentStep === 0 && isConnected) {
-      setCurrentStep(1);
-    }
-
     switch (currentStep) {
-      case 0: // Connect Wallet Step
+      case 0: // Connect to Farcaster Step
+        return (
+          <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
+            <h3 className="text-xl font-semibold">Connect with Farcaster</h3>
+            <p className="text-center">Please connect your Farcaster account to get started with Monad Match.</p>
+            <p className="text-sm text-center text-base-content/70">
+              If you're already connected in Farcaster, please wait a moment...
+            </p>
+            {/* Farcaster info component */}
+            <User />
+          </div>
+        );
+      case 1: // Connect Wallet Step
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
             <h3 className="text-xl font-semibold">Connect Wallet</h3>
-            <p className="text-center">Connect your wallet to get started with Monad Match.</p>
-            <RainbowKitCustomConnectButton />
-          </div>
-        );
-      case 1: // Sign Message Step (was step 0 before)
-        return (
-          <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Verify Ownership</h3>
             <p className="text-center">
-              Sign a message with your main wallet to generate or restore your secure game wallet.
+              Hi, {farcasterUser?.displayName || farcasterUser?.username || "Farcaster user"}! Now connect your wallet
+              to continue.
             </p>
-            <button className="btn btn-primary" onClick={handleSignMessage}>
-              Sign Message
-            </button>
+            {isConnected ? (
+              <button className="btn btn-primary" onClick={handleSignMessage}>
+                Sign Message & Continue
+              </button>
+            ) : (
+              <RainbowKitCustomConnectButton />
+            )}
           </div>
         );
-      case 2: // Generate Wallet Step (was step 1 before)
+      case 2: // Generate Wallet Step
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
             <h3 className="text-xl font-semibold">Generate Game Wallet</h3>
             <p className="text-center">
-              No existing game wallet found for this address. Click below to generate a new one.
+              No existing game wallet found for {farcasterUser?.username || "your account"}. Click below to generate a
+              new one.
             </p>
             <button className="btn btn-secondary" onClick={generateGameWallet}>
               Generate New Game Wallet
             </button>
           </div>
         );
-      case 3: // Fund Wallet Step (was step 2 before)
+      case 3: // Fund Wallet Step
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
             <h3 className="text-xl font-semibold">Fund Your Game Wallet</h3>
@@ -484,27 +536,52 @@ export default function Home() {
             </button>
           </div>
         );
-      case 4: // Play Game (Main Game UI) (was step 3 before)
+      case 4: // Play Game (Main Game UI)
         return (
-          <>
-            {/* Left Column - Game Title and Stats */}
-            <div className="w-[25%] flex flex-col">
-              <div className="mb-4 pl-9">
-                <div className="text-3xl font-bold">Monad Match</div>
-                <div className="mt-2 text-base opacity-70">Match monanimals to earn points!</div>
+          <div className="flex flex-col w-full h-full">
+            {/* Top Row - Game Title and Stats */}
+            <div className="flex flex-row items-center justify-between w-full px-4 py-2 mb-2">
+              <div className="flex flex-col">
+                <div className="text-2xl font-bold">Monad Match</div>
+                <div className="text-sm opacity-70">Match monanimals to earn points!</div>
+                {gameStore.gameStatus && (
+                  <div className="mt-1 text-sm text-accent animate-pulse">{gameStore.gameStatus}</div>
+                )}
               </div>
 
-              {/* Game Status Messages */}
-              <div className="mt-1 mb-4 ml-9">
-                {gameStore.gameStatus && <div className="text-accent animate-pulse">{gameStore.gameStatus}</div>}
-              </div>
+              {/* Controls */}
+              <div className="flex items-center gap-2">
+                <button
+                  className="btn btn-circle btn-sm btn-secondary"
+                  onClick={handleToggleMusic}
+                  title={musicPlaying ? "Mute Music" : "Play Music"}
+                >
+                  {musicPlaying ? <SpeakerWaveIcon className="w-4 h-4" /> : <SpeakerXMarkIcon className="w-4 h-4" />}
+                </button>
 
-              {/* Stats Component */}
-              <Stats handleOpenDrawer={handleOpenDrawer} />
+                <button className="btn btn-primary btn-sm" onClick={handleResetGame}>
+                  Reset
+                </button>
+
+                {/* Drawer toggle button */}
+                <label htmlFor="wallet-drawer" className="btn btn-accent btn-sm">
+                  Wallet
+                </label>
+              </div>
             </div>
 
-            {/* Middle Column - Game Board */}
-            <div className="w-[50%] flex items-center justify-center" onClick={handleBoardClick}>
+            {/* Stats Row - Quick Access to Key Stats */}
+            <div className="flex justify-center w-full px-4 mb-4">
+              <Stats
+                handleOpenDrawer={() => {
+                  const drawerElement = document.getElementById("wallet-drawer") as HTMLInputElement;
+                  if (drawerElement) drawerElement.checked = true;
+                }}
+              />
+            </div>
+
+            {/* Game Board - Full Width */}
+            <div className="flex items-center justify-center flex-grow w-full px-2" onClick={handleBoardClick}>
               {gameWallet && gameStore.gameBoard ? (
                 <Board />
               ) : (
@@ -512,37 +589,75 @@ export default function Home() {
               )}
             </div>
 
-            {/* Right Column - Wallet Details */}
-            <div className="w-[25%] flex flex-col pr-9 space-y-4 pt-12">
-              <RainbowKitCustomConnectButton />
-              {/* Wallet Info & Actions */}
-              <div className="p-4 rounded-lg shadow-md bg-base-100">
-                <GameWalletDetails />
-              </div>
+            {/* Wallet and Transaction History Drawer */}
+            <div className="drawer drawer-end">
+              <input id="wallet-drawer" type="checkbox" className="drawer-toggle" />
+              <div className="z-50 drawer-side">
+                <label htmlFor="wallet-drawer" className="drawer-overlay"></label>
+                <div className="flex flex-col min-h-full p-4 w-80 bg-base-200 text-base-content">
+                  {/* Drawer Header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold">Wallet & Transactions</h3>
+                    <label htmlFor="wallet-drawer" className="btn btn-sm btn-circle">
+                      ✕
+                    </label>
+                  </div>
 
-              {/* Game Controls */}
-              <div className="flex flex-col w-full gap-3">
-                <div className="flex gap-2">
-                  <button className="flex-1 btn btn-primary" onClick={handleResetGame}>
-                    Reset Game
-                  </button>
-                  <button
-                    className="btn btn-circle btn-secondary"
-                    onClick={handleToggleMusic}
-                    title={musicPlaying ? "Mute Music" : "Play Music"}
-                  >
-                    {musicPlaying ? <SpeakerWaveIcon className="w-5 h-5" /> : <SpeakerXMarkIcon className="w-5 h-5" />}
-                  </button>
+                  {/* Farcaster Profile */}
+                  {farcasterUser && (
+                    <div className="flex items-center gap-2 px-3 py-2 mb-4 rounded-lg bg-base-100">
+                      {farcasterUser.pfpUrl && (
+                        <img src={farcasterUser.pfpUrl} className="w-8 h-8 rounded-full" alt="Farcaster Profile" />
+                      )}
+                      <div className="text-sm font-medium">{farcasterUser.displayName || farcasterUser.username}</div>
+                    </div>
+                  )}
+
+                  {/* Main Wallet Connection */}
+                  <div className="mb-4">
+                    <RainbowKitCustomConnectButton />
+                  </div>
+
+                  {/* Game Wallet Details */}
+                  <div className="p-4 mb-4 rounded-lg shadow-md bg-base-100">
+                    <GameWalletDetails />
+                  </div>
+
+                  {/* Transaction History */}
+                  <div className="mb-4">
+                    <h4 className="mb-2 font-semibold text-md">Transaction History</h4>
+                    <div className="p-2 overflow-y-auto border rounded-lg border-base-300 max-h-60">
+                      {gameStore.txHashes && gameStore.txHashes.length > 0 ? (
+                        <ul className="space-y-2">
+                          {gameStore.txHashes.map((tx, index) => (
+                            <li key={index} className="text-xs break-all">
+                              <a
+                                href={`${process.env.NEXT_PUBLIC_MONAD_EXPLORER_URL}/tx/${tx}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-accent hover:underline"
+                              >
+                                {tx.slice(0, 10)}...{tx.slice(-8)}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-center opacity-70">No transactions yet</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Game Controls */}
+                  <div className="mt-auto">
+                    <button className="w-full btn btn-primary" onClick={handleResetGame}>
+                      Reset Game
+                    </button>
+                  </div>
                 </div>
-                <button
-                  className="flex flex-row items-center justify-center btn btn-accent btn-outline"
-                  onClick={handleOpenDrawer}
-                >
-                  Transaction History
-                </button>
               </div>
             </div>
-          </>
+          </div>
         );
       default:
         return <div>Loading...</div>; // Or some initial loading state
@@ -589,9 +704,6 @@ export default function Home() {
           <SwitchTheme className={`pointer-events-auto`} />
         </div>
       </div>
-
-      {/* Transaction History Drawer */}
-      <ZustandDrawer />
     </>
   );
 }

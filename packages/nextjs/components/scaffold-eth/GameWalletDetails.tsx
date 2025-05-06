@@ -13,6 +13,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { BlockieAvatar } from "~~/components/scaffold-eth";
 import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
+import { useMiniAppContext } from "~~/hooks/use-miniapp-context";
 import { useGameStore } from "~~/services/store/gameStore";
 import { getBlockExplorerAddressLink } from "~~/utils/scaffold-eth";
 
@@ -23,6 +24,8 @@ export const GameWalletDetails = () => {
   const { targetNetwork } = useTargetNetwork();
   const [addressCopied, setAddressCopied] = useState(false);
   const { gameWalletAddress } = useGameStore();
+  const { context: farcasterContext } = useMiniAppContext();
+  const farcasterUser = farcasterContext?.user;
 
   const handleCopyAddress = () => {
     setAddressCopied(true);
@@ -47,6 +50,11 @@ export const GameWalletDetails = () => {
     <div className="flex flex-col items-center w-full gap-2">
       <div className="w-full pb-1 border-b head border-base-300">
         <span className="mb-2 text-sm font-semibold text-left place-self-start">Game Wallet</span>
+        {farcasterUser && (
+          <span className="text-xs text-base-content/70">
+            Linked to {farcasterUser.displayName || farcasterUser.username || `fid:${farcasterUser.fid}`}
+          </span>
+        )}
       </div>
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
