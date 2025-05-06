@@ -577,7 +577,7 @@ export default function Home() {
               {gameWallet && gameStore.gameBoard ? (
                 <>
                   <Board />
-                  <button className="h-8 px-4 mt-4 btn btn-primary btn-sm" onClick={handleResetGame}>
+                  <button className="w-full h-10 px-4 mt-8 mb-4 btn btn-primary" onClick={handleResetGame}>
                     Reset
                   </button>
                 </>
@@ -602,29 +602,32 @@ export default function Home() {
 
                   {/* Farcaster Profile */}
                   {farcasterUser && (
-                    <div className="flex items-center gap-2 px-3 py-2 mb-4 rounded-lg bg-base-100">
-                      {farcasterUser.pfpUrl && (
-                        <img src={farcasterUser.pfpUrl} className="w-8 h-8 rounded-full" alt="Farcaster Profile" />
-                      )}
-                      <div className="text-sm font-medium">{farcasterUser.displayName || farcasterUser.username}</div>
-                      <button
-                        className="btn btn-circle btn-sm btn-secondary"
-                        onClick={handleToggleMusic}
-                        title={musicPlaying ? "Mute Music" : "Play Music"}
-                      >
-                        {musicPlaying ? (
-                          <SpeakerWaveIcon className="w-4 h-4" />
-                        ) : (
-                          <SpeakerXMarkIcon className="w-4 h-4" />
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 mb-4 rounded-lg bg-base-100">
+                      <div className="flex items-center gap-2">
+                        {farcasterUser.pfpUrl && (
+                          <img src={farcasterUser.pfpUrl} className="w-8 h-8 rounded-full" alt="Farcaster Profile" />
                         )}
-                      </button>
+                        <div className="text-sm font-medium">{farcasterUser.displayName || farcasterUser.username}</div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Main Wallet Connection */}
+
+                        <RainbowKitCustomConnectButton />
+                        <button
+                          className="btn btn-circle btn-sm btn-secondary"
+                          onClick={handleToggleMusic}
+                          title={musicPlaying ? "Mute Music" : "Play Music"}
+                        >
+                          {musicPlaying ? (
+                            <SpeakerWaveIcon className="w-4 h-4" />
+                          ) : (
+                            <SpeakerXMarkIcon className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
-
-                  {/* Main Wallet Connection */}
-                  <div className="mb-4">
-                    <RainbowKitCustomConnectButton />
-                  </div>
 
                   {/* Game Wallet Details */}
                   <div className="p-4 mb-4 rounded-lg shadow-md bg-base-100">

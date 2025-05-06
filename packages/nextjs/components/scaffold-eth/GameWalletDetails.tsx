@@ -50,11 +50,6 @@ export const GameWalletDetails = () => {
     <div className="flex flex-col items-center w-full gap-2">
       <div className="w-full pb-1 border-b head border-base-300">
         <span className="mb-2 text-sm font-semibold text-left place-self-start">Game Wallet</span>
-        {farcasterUser && (
-          <span className="text-xs text-base-content/70">
-            Linked to {farcasterUser.displayName || farcasterUser.username || `fid:${farcasterUser.fid}`}
-          </span>
-        )}
       </div>
       <div className="flex items-center justify-between w-full">
         <div className="flex items-center gap-2">
@@ -75,14 +70,14 @@ export const GameWalletDetails = () => {
             ) : (
               <DocumentDuplicateIcon className="w-4 h-4" />
             )}
-            <span className="text-sm">{addressCopied ? "Copied!" : "Copy Game Wallet Address"}</span>
+            <span className="text-sm">{addressCopied ? "Copied!" : "Copy address"}</span>
           </button>
         </CopyToClipboard>
 
         {/* QR Code - you may want to implement a modal for this */}
         <label htmlFor="qrcode-modal" className="justify-start w-full gap-2 normal-case btn btn-sm btn-ghost">
           <QrCodeIcon className="w-4 h-4" />
-          <span className="text-sm">View QR Code</span>
+          <span className="text-sm">View QR</span>
         </label>
 
         {/* Block Explorer */}
@@ -93,7 +88,7 @@ export const GameWalletDetails = () => {
           className="justify-start w-full gap-2 normal-case btn btn-sm btn-ghost"
         >
           <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-          <span className="text-sm">View Game Wallet on Explorer</span>
+          <span className="text-sm">View on explorer</span>
         </a>
       </div>
     </div>
