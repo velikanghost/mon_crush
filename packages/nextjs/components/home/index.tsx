@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { LocalAccount } from "viem";
 import { parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { useAccount } from "wagmi";
+import { useAccount, useConnect } from "wagmi";
 import { useSendTransaction, useSignMessage } from "wagmi";
 import {
   ChevronDoubleRightIcon,
@@ -19,7 +19,6 @@ import { FarcasterActions } from "~~/components/home/FarcasterActions";
 import Stats from "~~/components/home/Stats";
 import { User } from "~~/components/home/User";
 import ZustandDrawer from "~~/components/home/ZustandDrawer";
-import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
 import { GameWalletDetails } from "~~/components/scaffold-eth/GameWalletDetails";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { useMiniAppContext } from "~~/hooks/use-miniapp-context";
@@ -33,6 +32,7 @@ import { extendUserSession } from "~~/services/utils/sessionStorage";
 
 export default function Home() {
   const { address: connectedAddress, isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
   const { context: farcasterContext, actions: farcasterActions } = useMiniAppContext();
   const farcasterUser = farcasterContext?.user;
   const isFarcasterConnected = !!farcasterUser;
@@ -498,12 +498,23 @@ export default function Home() {
               Hi, {farcasterUser?.displayName || farcasterUser?.username || "Farcaster user"}! Now connect your wallet
               to continue.
             </p>
+            {/* Farcaster Mini App Wallet Connect */}
             {isConnected ? (
               <button className="btn btn-primary" onClick={handleSignMessage}>
                 Sign Message & Continue
               </button>
             ) : (
-              <RainbowKitCustomConnectButton />
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  // Use Wagmi's useConnect to connect Farcaster wallet
+                  if (connectors && connectors.length > 0) {
+                    connect({ connector: connectors[0] });
+                  }
+                }}
+              >
+                Connect Farcaster Wallet
+              </button>
             )}
           </div>
         );
@@ -627,20 +638,7 @@ export default function Home() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {/* Main Wallet Connection */}
-
-                        <RainbowKitCustomConnectButton />
-                        <button
-                          className="btn btn-circle btn-sm btn-secondary"
-                          onClick={handleToggleMusic}
-                          title={musicPlaying ? "Mute Music" : "Play Music"}
-                        >
-                          {musicPlaying ? (
-                            <SpeakerWaveIcon className="w-4 h-4" />
-                          ) : (
-                            <SpeakerXMarkIcon className="w-4 h-4" />
-                          )}
-                        </button>
+                        {/* No wallet selection needed; Farcaster Mini App wallet is used */}
                       </div>
                     </div>
                   )}
