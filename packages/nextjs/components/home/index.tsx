@@ -7,7 +7,12 @@ import { parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { useAccount } from "wagmi";
 import { useSendTransaction, useSignMessage } from "wagmi";
-import { SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/outline";
+import {
+  ChevronDoubleRightIcon,
+  ChevronRightIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon,
+} from "@heroicons/react/24/outline";
 import { SwitchTheme } from "~~/components/SwitchTheme";
 import Board from "~~/components/home/Board";
 import { FarcasterActions } from "~~/components/home/FarcasterActions";
@@ -48,6 +53,8 @@ export default function Home() {
   // Ref to track previous connected address for disconnect detection
   const previousAddressRef = useRef<string | undefined>(undefined);
   const previousFidRef = useRef<number | undefined>(undefined);
+  // Ref to prevent duplicate wallet restoration and toasts
+  const hasRestoredWallet = useRef(false);
 
   // Get on-chain high score for the connected address
   const { data: onChainHighScore } = useScaffoldReadContract({
@@ -114,9 +121,11 @@ export default function Home() {
     if (existingSignature) {
       console.log("Using existing session signature");
       toast.success("Using existing session (valid for 3 days)");
-
-      // Process the existing signature
-      processSignature(existingSignature, userIdentifier);
+      // Prevent duplicate wallet restoration and toasts
+      if (!hasRestoredWallet.current) {
+        hasRestoredWallet.current = true;
+        processSignature(existingSignature, userIdentifier);
+      }
       return;
     }
 
@@ -320,7 +329,10 @@ export default function Home() {
       if (sessionSignature) {
         // If we have a valid session, process it automatically
         console.log("Found valid session, automatically restoring game wallet");
-        processSignature(sessionSignature, userIdentifier);
+        if (!hasRestoredWallet.current) {
+          hasRestoredWallet.current = true;
+          processSignature(sessionSignature, userIdentifier);
+        }
       } else {
         // If wallet is connected but no session, start at sign message step
         setCurrentStep(1); // Step 1 is now Sign Message
@@ -450,7 +462,10 @@ export default function Home() {
           extendUserSession(userIdentifier);
 
           // Process the signature to restore wallet
-          processSignature(sessionSignature, userIdentifier);
+          if (!hasRestoredWallet.current) {
+            hasRestoredWallet.current = true;
+            processSignature(sessionSignature, userIdentifier);
+          }
         }
       }
     };
@@ -557,6 +572,7 @@ export default function Home() {
                     {farcasterUser.pfpUrl && (
                       <img src={farcasterUser.pfpUrl} className="w-8 h-8 rounded-full" alt="Farcaster Profile" />
                     )}
+                    <ChevronRightIcon className="w-4 h-4 font-bold" color="black" strokeWidth={2} />
                   </label>
                 )}
               </div>
