@@ -115,9 +115,9 @@ export const CONTRACT_ABI = [
   {
     inputs: [
       {
-        internalType: "uint8[8][8]",
+        internalType: "uint8[6][6]",
         name: "newBoard",
-        type: "uint8[8][8]",
+        type: "uint8[6][6]",
       },
     ],
     name: "updateGameBoard",

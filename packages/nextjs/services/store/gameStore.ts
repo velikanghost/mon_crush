@@ -72,9 +72,9 @@ export interface GameState {
 
 export const useGameStore = create<GameState>((set, get) => ({
   // Initial state
-  gameBoard: Array(8)
+  gameBoard: Array(6)
     .fill(0)
-    .map(() => Array(8).fill(0)),
+    .map(() => Array(6).fill(0)),
   selectedCandy: null,
   matches: [],
   score: 0,
@@ -255,12 +255,12 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // Create no-match board (to prevent matches on initialization)
   createNoMatchBoard: () => {
-    const board = Array(8)
+    const board = Array(6)
       .fill(0)
-      .map(() => Array(8).fill(0));
+      .map(() => Array(6).fill(0));
 
-    for (let y = 0; y < 8; y++) {
-      for (let x = 0; x < 8; x++) {
+    for (let y = 0; y < 6; y++) {
+      for (let x = 0; x < 6; x++) {
         // Determine what candy types would create matches
         const invalidTypes = new Set<number>();
 
@@ -296,8 +296,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     const board = initialBoard.map(row => [...row]);
 
     // Check horizontal matches
-    for (let y = 0; y < 8; y++) {
-      for (let x = 0; x < 6; x++) {
+    for (let y = 0; y < 6; y++) {
+      for (let x = 0; x < 4; x++) {
         if (board[y][x] !== 0 && board[y][x] === board[y][x + 1] && board[y][x] === board[y][x + 2]) {
           // Found a horizontal match - determine its full length
           let matchLen = 3;
@@ -306,7 +306,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             startX--;
             matchLen++;
           }
-          while (x + matchLen < 8 && board[y][x + matchLen] === board[y][x]) {
+          while (x + matchLen < 6 && board[y][x + matchLen] === board[y][x]) {
             matchLen++;
           }
 
@@ -326,8 +326,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     // Check vertical matches
-    for (let x = 0; x < 8; x++) {
-      for (let y = 0; y < 6; y++) {
+    for (let x = 0; x < 6; x++) {
+      for (let y = 0; y < 4; y++) {
         if (board[y][x] !== 0 && board[y][x] === board[y + 1][x] && board[y][x] === board[y + 2][x]) {
           // Found a vertical match - determine its full length
           let matchLen = 3;
@@ -336,7 +336,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             startY--;
             matchLen++;
           }
-          while (y + matchLen < 8 && board[y + matchLen][x] === board[y][x]) {
+          while (y + matchLen < 6 && board[y + matchLen][x] === board[y][x]) {
             matchLen++;
           }
 

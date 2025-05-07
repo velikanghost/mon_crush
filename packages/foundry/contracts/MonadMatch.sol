@@ -8,7 +8,7 @@ pragma solidity >=0.8.0 <0.9.0;
  */
 contract MonadMatch {
     // Game board size
-    uint8 public constant BOARD_SIZE = 8;
+    uint8 public constant BOARD_SIZE = 6;
 
     // Item types
     uint8 public constant EMPTY = 0;
@@ -36,7 +36,7 @@ contract MonadMatch {
         uint8 monanimalType
     );
     event ScoreUpdated(address indexed player, uint256 newScore);
-    event GameBoardUpdated(uint8[8][8] board);
+    event GameBoardUpdated(uint8[6][6] board);
     event GameWalletLinked(
         address indexed mainWallet,
         address indexed gameWallet
@@ -169,7 +169,7 @@ contract MonadMatch {
      * @notice Update the entire game board (admin function for initialization)
      * @param newBoard The new state of the game board
      */
-    function updateGameBoard(uint8[8][8] calldata newBoard) external {
+    function updateGameBoard(uint8[6][6] calldata newBoard) external {
         for (uint8 i = 0; i < BOARD_SIZE; i++) {
             for (uint8 j = 0; j < BOARD_SIZE; j++) {
                 gameBoard[i][j] = newBoard[i][j];

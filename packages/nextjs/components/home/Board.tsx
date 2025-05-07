@@ -36,7 +36,7 @@ const Board = ({
 
   return (
     <div className="w-full max-w-md mx-auto">
-      <div className="grid grid-cols-8 gap-[2px] sm:gap-1 p-2 bg-gray-800 rounded-lg">
+      <div className="grid grid-cols-6 gap-[4px] sm:gap-1 p-2 bg-gray-800 rounded-lg">
         {gameBoard.map((row, y) =>
           row.map((candy, x) => (
             <div
