@@ -47,6 +47,11 @@ export const storeUserSession = (address: string, signature: string): void => {
  * @returns The signature if valid, or null if expired or not found
  */
 export const getUserSession = (address: string): string | null => {
+  // TEMPORARY: Always return null to disable session persistence for testing
+  return null;
+
+  // Original implementation commented out for easy restoration later
+  /*
   if (!address) return null;
 
   try {
@@ -74,6 +79,7 @@ export const getUserSession = (address: string): string | null => {
     localStorage.removeItem(`monadMatch_session_${address}`);
     return null;
   }
+  */
 };
 
 /**
