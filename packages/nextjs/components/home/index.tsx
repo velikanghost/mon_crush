@@ -6,7 +6,8 @@ import { LocalAccount } from "viem";
 import { parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { useAccount, useConnect } from "wagmi";
-import { useSendTransaction, useSignMessage } from "wagmi";
+import { useSendTransaction } from "wagmi";
+import { useSignMessage } from "wagmi";
 import {
   ChevronDoubleRightIcon,
   ChevronRightIcon,
@@ -47,7 +48,7 @@ export default function Home() {
   const [gameWalletFunded, setGameWalletFunded] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0); // 0: Connect Farcaster, 1: Connect Wallet, 2: Sign, 3: Fund, 4: Play
   const [signature, setSignature] = useState<string>("");
-  const { signMessage } = useSignMessage();
+  const { signMessageAsync } = useSignMessage();
   const { sendTransactionAsync } = useSendTransaction();
 
   // Ref to track previous connected address for disconnect detection
@@ -109,44 +110,30 @@ export default function Home() {
   // Function to handle signing message
   const handleSignMessage = async () => {
     if (!isConnected || !connectedAddress) {
-      toast.error("Please connect your main wallet first!");
+      toast.error("Please connect your wallet first!");
       return;
     }
 
     // Create a unique identifier combining Farcaster FID and wallet address
     const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
 
-    // Check if we have a valid session - if so, use it instead of asking for signature
-    const existingSignature = getUserSession(userIdentifier);
-    if (existingSignature) {
-      console.log("Using existing session signature");
-      toast.success("Using existing session (valid for 3 days)");
-      // Prevent duplicate wallet restoration and toasts
-      if (!hasRestoredWallet.current) {
-        hasRestoredWallet.current = true;
-        processSignature(existingSignature, userIdentifier);
-      }
-      return;
+    try {
+      // Use the Farcaster wallet directly via sdk.wallet.ethProvider
+      const message = `Sign this message to generate or restore your Monad Match game wallet for Farcaster user ${farcasterUser?.username || "unknown"}`;
+
+      // If using ethers:
+      // const signature = await provider.signMessage(message);
+
+      // If using wagmi's signMessage (with appropriate connector adaptation):
+      const signature = await signMessageAsync({ message });
+
+      // Store the signature and process it
+      storeUserSession(userIdentifier, signature);
+      processSignature(signature, userIdentifier);
+    } catch (error) {
+      console.error("Signing failed", error);
+      toast.error(`Signing failed`);
     }
-
-    const message = `Sign this message to generate or restore your Monad Match game wallet for Farcaster user ${farcasterUser?.username || "unknown"}`;
-
-    signMessage(
-      { message },
-      {
-        onSuccess: signedMessage => {
-          // Store the signature for 3-day session persistence
-          storeUserSession(userIdentifier, signedMessage);
-
-          // Process the signature
-          processSignature(signedMessage, userIdentifier);
-        },
-        onError: error => {
-          console.error("Signing failed", error);
-          toast.error(`Signing failed: ${error.message}`);
-        },
-      },
-    );
   };
 
   // Helper function to process signature (extracted to avoid code duplication)
