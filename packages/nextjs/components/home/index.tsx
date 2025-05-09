@@ -223,9 +223,6 @@ export default function Home() {
     }
 
     try {
-      // Get the Farcaster wallet address if available
-      const { isEthProviderAvailable } = useMiniAppContext();
-
       // Create a unique identifier combining Farcaster FID and wallet address
       const userIdentifier = farcasterUser
         ? `${farcasterUser.fid}_${connectedAddress || ""}`
@@ -312,9 +309,6 @@ export default function Home() {
 
   // Initialize game when component mounts and Farcaster user is connected
   useEffect(() => {
-    // Create reference to mini app context to avoid dependency issues
-    const { isEthProviderAvailable } = useMiniAppContext();
-
     // Check for disconnect by comparing previous and current state
     const wasConnected = previousAddressRef.current !== undefined;
     const isDisconnect = wasConnected && !isConnected;
