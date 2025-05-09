@@ -3,12 +3,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider, createConfig, http } from "wagmi";
 import { monadTestnet } from "~~/scaffold.config";
 
+// Create a more robust connector for Farcaster Mini Apps
 export const config = createConfig({
   chains: [monadTestnet],
   transports: {
     [monadTestnet.id]: http(),
   },
   connectors: [farcasterFrame()],
+  // Enable auto-connecting
+  syncConnectedChain: true,
 });
 
 const queryClient = new QueryClient();

@@ -5,8 +5,9 @@ import toast from "react-hot-toast";
 import { LocalAccount } from "viem";
 import { parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { useAccount } from "wagmi";
+import { useAccount, useSwitchChain } from "wagmi";
 import { useSendTransaction, useSignMessage } from "wagmi";
+import { switchChain } from "wagmi/actions";
 import {
   ChevronDoubleRightIcon,
   ChevronRightIcon,
@@ -19,10 +20,10 @@ import { FarcasterActions } from "~~/components/home/FarcasterActions";
 import Stats from "~~/components/home/Stats";
 import { User } from "~~/components/home/User";
 import ZustandDrawer from "~~/components/home/ZustandDrawer";
-import { RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
 import { GameWalletDetails } from "~~/components/scaffold-eth/GameWalletDetails";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { useMiniAppContext } from "~~/hooks/use-miniapp-context";
+import { monadTestnet } from "~~/scaffold.config";
 import { initGameAudio, startBackgroundMusic, toggleBackgroundMusic } from "~~/services/audio/gameAudio";
 import { clearTxHashesFromDB } from "~~/services/indexeddb/transactionDB";
 import { initMatchSound } from "~~/services/store/gameLogic";
@@ -36,6 +37,7 @@ export default function Home() {
   const { context: farcasterContext, actions: farcasterActions } = useMiniAppContext();
   const farcasterUser = farcasterContext?.user;
   const isFarcasterConnected = !!farcasterUser;
+  const { switchChain } = useSwitchChain();
 
   const gameStore = useGameStore();
   const [musicPlaying, setMusicPlaying] = useState(false);
@@ -108,45 +110,56 @@ export default function Home() {
 
   // Function to handle signing message
   const handleSignMessage = async () => {
-    if (!isConnected || !connectedAddress) {
-      toast.error("Please connect your main wallet first!");
-      return;
-    }
+    try {
+      // Create a unique identifier combining Farcaster FID and wallet address
+      const userIdentifier = farcasterUser
+        ? `${farcasterUser.fid}_${connectedAddress || ""}`
+        : connectedAddress || "farcaster-user";
 
-    // Create a unique identifier combining Farcaster FID and wallet address
-    const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
-
-    // Check if we have a valid session - if so, use it instead of asking for signature
-    const existingSignature = getUserSession(userIdentifier);
-    if (existingSignature) {
-      console.log("Using existing session signature");
-      toast.success("Using existing session (valid for 3 days)");
-      // Prevent duplicate wallet restoration and toasts
-      if (!hasRestoredWallet.current) {
-        hasRestoredWallet.current = true;
-        processSignature(existingSignature, userIdentifier);
+      // Check if we have a valid session - if so, use it instead of asking for signature
+      const existingSignature = getUserSession(userIdentifier);
+      if (existingSignature) {
+        // Prevent duplicate wallet restoration and toasts
+        if (!hasRestoredWallet.current) {
+          hasRestoredWallet.current = true;
+          processSignature(existingSignature, userIdentifier);
+        }
+        return;
       }
-      return;
+
+      // Since this is a Farcaster-only app, use Farcaster signing directly
+      if (!farcasterActions) {
+        toast.error("Farcaster actions not available. Make sure you're using a Farcaster client.");
+        return;
+      }
+
+      toast.loading("Requesting signature via Farcaster...");
+
+      // Use a unique nonce to identify this signing request
+      const nonce = Date.now().toString();
+
+      // Use the signIn function from Farcaster SDK
+      const result = await farcasterActions.signIn({ nonce });
+
+      if (result && result.signature) {
+        toast.dismiss();
+
+        // We'll use this signature as our signature for the game wallet
+        const signedMessage = `${result.signature}:${nonce}`;
+
+        // Store the signature for 3-day session persistence
+        storeUserSession(userIdentifier, signedMessage);
+
+        // Process the signature
+        processSignature(signedMessage, userIdentifier);
+      } else {
+        toast.dismiss();
+        throw new Error("Failed to get signature from Farcaster signIn");
+      }
+    } catch (error) {
+      toast.dismiss();
+      toast.error(`Farcaster signing failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const message = `Sign this message to generate or restore your Monad Match game wallet for Farcaster user ${farcasterUser?.username || "unknown"}`;
-
-    signMessage(
-      { message },
-      {
-        onSuccess: signedMessage => {
-          // Store the signature for 3-day session persistence
-          storeUserSession(userIdentifier, signedMessage);
-
-          // Process the signature
-          processSignature(signedMessage, userIdentifier);
-        },
-        onError: error => {
-          console.error("Signing failed", error);
-          toast.error(`Signing failed: ${error.message}`);
-        },
-      },
-    );
   };
 
   // Helper function to process signature (extracted to avoid code duplication)
@@ -154,8 +167,12 @@ export default function Home() {
     const savedWallet = localStorage.getItem(`gameWallet_${userIdentifier}`);
     if (savedWallet) {
       try {
-        //console.log("Restoring wallet from localStorage...", savedWallet);
-        const key = deriveEncryptionKey(signedMessage);
+        // For Farcaster signatures, we need to extract just the signature part if it has our format
+        const signatureToUse = signedMessage.includes(":")
+          ? signedMessage.split(":")[0] // Extract the signature part before the colon
+          : signedMessage; // Otherwise use as-is
+
+        const key = deriveEncryptionKey(signatureToUse);
         const decryptedPrivateKey = decryptData(savedWallet, key);
 
         // Ensure the decrypted private key is properly formatted
@@ -165,25 +182,33 @@ export default function Home() {
 
         const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
         setGameWallet(account);
-        console.log("Restored game wallet:", account.address);
-        setGameWalletFunded(true); // Assume funded if restored
 
         // Store in game store for transaction signing
         gameStore.setGameWalletPrivateKey(formattedPrivateKey);
         gameStore.setGameWalletAddress(account.address);
 
         setCurrentStep(4); // Go directly to game
-        setSignature(signedMessage); // Store signature for future use
+        setSignature(signatureToUse); // Store signature for future use
+        setGameWalletFunded(true); // Assume funded if restored
         toast.success("Game wallet restored!");
+
+        // Not using setTimeout to avoid potential timing issues
+        if (gameStore.initGame) {
+          gameStore.initGame();
+        }
       } catch (error) {
-        console.error("Failed to restore game wallet:", error);
         toast.error("Failed to restore wallet. Generating a new one.");
         localStorage.removeItem(`gameWallet_${userIdentifier}`); // Clear invalid data
         setSignature(signedMessage); // Keep signature
         setCurrentStep(2); // Proceed to generate new wallet
       }
     } else {
-      setSignature(signedMessage); // Store signature for generation
+      // For Farcaster signatures, we need to extract just the signature part if it has our format
+      const signatureToUse = signedMessage.includes(":")
+        ? signedMessage.split(":")[0] // Extract the signature part before the colon
+        : signedMessage; // Otherwise use as-is
+
+      setSignature(signatureToUse); // Store signature for generation
       setCurrentStep(2); // Proceed to generate a new game wallet
       toast.success("Sign message successful. Ready to generate game wallet.");
     }
@@ -191,15 +216,20 @@ export default function Home() {
 
   // Function to generate a new game wallet
   const generateGameWallet = async () => {
-    if (!signature || !connectedAddress) {
+    if (!signature) {
       toast.error("Signature is missing. Please sign the message again.");
       setCurrentStep(1); // Go back to signing step
       return;
     }
 
     try {
+      // Get the Farcaster wallet address if available
+      const { isEthProviderAvailable } = useMiniAppContext();
+
       // Create a unique identifier combining Farcaster FID and wallet address
-      const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
+      const userIdentifier = farcasterUser
+        ? `${farcasterUser.fid}_${connectedAddress || ""}`
+        : connectedAddress || "farcaster-user";
 
       const privateKey = generatePrivateKey();
       const account = privateKeyToAccount(privateKey);
@@ -213,11 +243,10 @@ export default function Home() {
       const key = deriveEncryptionKey(signature);
       const encryptedPrivateKey = encryptData(privateKey, key);
       localStorage.setItem(`gameWallet_${userIdentifier}`, encryptedPrivateKey);
-      console.log("Generated and encrypted game wallet:", account.address);
+
       toast.success("New game wallet generated!");
       setCurrentStep(3); // Move to funding step
     } catch (error) {
-      console.error("Error generating game wallet:", error);
       toast.error("Failed to generate game wallet.");
     }
   };
@@ -257,8 +286,8 @@ export default function Home() {
 
   // Function to deposit funds
   const depositTokens = async () => {
-    if (!connectedAddress || !gameWallet) {
-      toast.error("Wallets not ready for deposit.");
+    if (!gameWallet) {
+      toast.error("Game wallet not created yet.");
       return;
     }
 
@@ -268,21 +297,24 @@ export default function Home() {
         to: gameWallet.address,
         value: parseEther(depositAmount),
       });
-      console.log("Deposit Transaction:", tx);
+
       toast.dismiss(); // Dismiss loading toast
-      toast.success(`Successfully deposited ${depositAmount} DMON!`);
+      toast.success(`Successfully deposited ${depositAmount} MON!`);
       setGameWalletFunded(true);
+
       // After successful funding, automatically try to link the wallet
       await handleLinkGameWallet();
     } catch (error: any) {
       toast.dismiss(); // Dismiss loading toast
-      console.error("Error depositing tokens:", error);
       toast.error(`Deposit failed: ${error.message}`);
     }
   };
 
   // Initialize game when component mounts and Farcaster user is connected
   useEffect(() => {
+    // Create reference to mini app context to avoid dependency issues
+    const { isEthProviderAvailable } = useMiniAppContext();
+
     // Check for disconnect by comparing previous and current state
     const wasConnected = previousAddressRef.current !== undefined;
     const isDisconnect = wasConnected && !isConnected;
@@ -292,8 +324,6 @@ export default function Home() {
 
     // Handle disconnect case
     if ((isDisconnect && previousAddressRef.current) || (isFarcasterDisconnect && previousFidRef.current)) {
-      console.log("Wallet or Farcaster disconnected, clearing session");
-
       if (previousAddressRef.current) {
         const userIdentifier = previousFidRef.current
           ? `${previousFidRef.current}_${previousAddressRef.current}`
@@ -312,55 +342,75 @@ export default function Home() {
 
       // Move to the "Connect Wallet" step if we're on the initial connection step
       if (currentStep === 0) {
-        setCurrentStep(1); // Move to "Connect Wallet" step
+        setCurrentStep(1); // Move to "Initialize Game Wallet" step
       }
-    }
 
-    if (isConnected && connectedAddress) {
-      // Update wallet address ref
-      previousAddressRef.current = connectedAddress;
+      // If wallet address is available, update the reference
+      if (connectedAddress) {
+        previousAddressRef.current = connectedAddress;
 
-      // Create user identifier using Farcaster FID if available
-      const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
+        // Switch to Monad Testnet when wallet is connected
+        const switchToMonadTestnet = async () => {
+          try {
+            await switchChain({ chainId: monadTestnet.id });
+          } catch (error) {
+            toast.error("Failed to switch to Monad Testnet. Please try again.");
+          }
+        };
 
-      // Attempt to restore session automatically on connect
+        switchToMonadTestnet();
+      }
+
+      // Get Farcaster wallet address if available
+      let farcasterWalletAddress = connectedAddress;
+
+      // Create user identifier using Farcaster FID
+      const userIdentifier = farcasterUser.fid
+        ? `${farcasterUser.fid}_${farcasterWalletAddress || ""}`
+        : farcasterWalletAddress || "farcaster-user";
+
+      // Attempt to restore session automatically
       const sessionSignature = getUserSession(userIdentifier);
 
       if (sessionSignature) {
         // If we have a valid session, process it automatically
-        console.log("Found valid session, automatically restoring game wallet");
         if (!hasRestoredWallet.current) {
           hasRestoredWallet.current = true;
           processSignature(sessionSignature, userIdentifier);
         }
-      } else {
-        // If wallet is connected but no session, start at sign message step
-        setCurrentStep(1); // Step 1 is now Sign Message
       }
 
       // Initialize game store basics
       if (gameStore.setAddress) {
-        gameStore.setAddress(connectedAddress); // Set main address in store
+        gameStore.setAddress(farcasterWalletAddress || "farcaster-user"); // Set main address in store
       }
       initMatchSound(); // Initialize sounds
-    } else if (!isConnected && currentStep > 0) {
-      // Keep Farcaster connection but reset wallet-related state
-      setCurrentStep(1); // Go back to "Connect Wallet" step
+    } else if (!isFarcasterConnected && currentStep > 0) {
+      // Reset to initial step if Farcaster disconnects
+      setCurrentStep(0);
     }
     // Dependencies ensure this runs when connection state changes
-  }, [isConnected, connectedAddress, gameStore.setAddress, isFarcasterConnected, farcasterUser, currentStep]);
+  }, [
+    isConnected,
+    connectedAddress,
+    gameStore.setAddress,
+    isFarcasterConnected,
+    farcasterUser,
+    currentStep,
+    switchChain,
+  ]);
 
   // Existing useEffect for game init - Now conditional on game wallet being ready (Step 4)
   useEffect(() => {
-    if (currentStep === 4 && gameWallet && connectedAddress) {
+    if (currentStep === 4 && gameWallet) {
       // Initialize the actual game logic only when wallet is ready and linked
       if (gameStore.initGame) {
-        console.log("Initializing game with main address:", connectedAddress, "and game wallet:", gameWallet.address);
-
         // Get the private key from localStorage since the gameWallet object doesn't expose it
         try {
           // Create user identifier using Farcaster FID if available
-          const userIdentifier = farcasterUser ? `${farcasterUser.fid}_${connectedAddress}` : connectedAddress;
+          const userIdentifier = farcasterUser
+            ? `${farcasterUser.fid}_${connectedAddress || ""}`
+            : connectedAddress || "farcaster-user";
 
           const savedWalletData = localStorage.getItem(`gameWallet_${userIdentifier}`);
           if (savedWalletData && signature) {
@@ -374,7 +424,7 @@ export default function Home() {
             gameStore.setGameWalletAddress(gameWallet.address);
           }
         } catch (error) {
-          console.error("Failed to retrieve game wallet private key:", error);
+          toast.error("Failed to retrieve game wallet private key");
         }
 
         // Initialize the game
@@ -493,18 +543,13 @@ export default function Home() {
       case 1: // Connect Wallet Step
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Connect Wallet</h3>
+            <h3 className="text-xl font-semibold">Initialize Game Wallet</h3>
             <p className="text-center">
-              Hi, {farcasterUser?.displayName || farcasterUser?.username || "Farcaster user"}! Now connect your wallet
-              to continue.
+              Hi, {farcasterUser?.displayName || farcasterUser?.username || "Farcaster user"}! Click below to continue.
             </p>
-            {isConnected ? (
-              <button className="btn btn-primary" onClick={handleSignMessage}>
-                Sign Message & Continue
-              </button>
-            ) : (
-              <RainbowKitCustomConnectButton />
-            )}
+            <button className="btn btn-primary" onClick={handleSignMessage}>
+              Initialize Game Wallet
+            </button>
           </div>
         );
       case 2: // Generate Wallet Step
@@ -525,9 +570,20 @@ export default function Home() {
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
             <h3 className="text-xl font-semibold">Fund Your Game Wallet</h3>
             <p className="text-center">
-              Deposit a small amount of MON to your new game wallet ({gameWallet?.address.slice(0, 6)}...
-              {gameWallet?.address.slice(-4)}) to cover transaction fees.
+              Deposit MON from your Farcaster wallet on Monad Testnet to your game wallet to cover transaction fees.
             </p>
+            <div className="flex items-center gap-2 text-lg">
+              <span className="font-mono">
+                {gameWallet?.address.slice(0, 6)}...{gameWallet?.address.slice(-4)}
+              </span>
+              <button
+                className="text-xs btn btn-ghost btn-xs"
+                onClick={() => navigator.clipboard.writeText(gameWallet?.address ?? "")}
+                disabled={!gameWallet}
+              >
+                Copy
+              </button>
+            </div>
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -539,16 +595,12 @@ export default function Home() {
               />
               <span>MON</span>
             </div>
+
             <button className="w-full btn btn-accent" onClick={depositTokens} disabled={!gameWallet}>
               Deposit Funds & Link Wallet
             </button>
-            <button
-              className="mt-2 text-xs btn btn-ghost btn-sm"
-              onClick={() => navigator.clipboard.writeText(gameWallet?.address ?? "")}
-              disabled={!gameWallet}
-            >
-              Copy Game Wallet Address
-            </button>
+
+            <p className="text-xs text-center">Make sure your Farcaster wallet is connected to Monad Testnet.</p>
           </div>
         );
       case 4: // Play Game (Main Game UI)
@@ -629,7 +681,6 @@ export default function Home() {
                       <div className="flex items-center gap-2">
                         {/* Main Wallet Connection */}
 
-                        <RainbowKitCustomConnectButton />
                         <button
                           className="btn btn-circle btn-sm btn-secondary"
                           onClick={handleToggleMusic}
