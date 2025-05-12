@@ -13,7 +13,6 @@ import {
 } from "@heroicons/react/24/outline";
 import { BlockieAvatar } from "~~/components/scaffold-eth";
 import { useTargetNetwork } from "~~/hooks/scaffold-eth/useTargetNetwork";
-import { useMiniAppContext } from "~~/hooks/use-miniapp-context";
 import { useGameStore } from "~~/services/store/gameStore";
 import { getBlockExplorerAddressLink } from "~~/utils/scaffold-eth";
 
@@ -24,8 +23,6 @@ export const GameWalletDetails = () => {
   const { targetNetwork } = useTargetNetwork();
   const [addressCopied, setAddressCopied] = useState(false);
   const { gameWalletAddress } = useGameStore();
-  const { context: farcasterContext } = useMiniAppContext();
-  const farcasterUser = farcasterContext?.user;
 
   const handleCopyAddress = () => {
     setAddressCopied(true);
