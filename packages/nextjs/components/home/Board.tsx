@@ -1,4 +1,3 @@
-import { useAccount } from "wagmi";
 import { handleCandyClick } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
 import { CANDY_IMAGES, CANDY_NAMES } from "~~/utils/helpers";
@@ -17,7 +16,6 @@ const Board = ({
   matches: propsMatches,
   handleCandyClick: propsHandleCandyClick,
 }: BoardProps) => {
-  const { address } = useAccount();
   const { gameBoard: storeGameBoard, selectedCandy: storeSelectedCandy, matches: storeMatches } = useGameStore();
 
   // Use store values with fallback to props for backward compatibility

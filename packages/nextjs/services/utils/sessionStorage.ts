@@ -49,33 +49,31 @@ export const storeUserSession = (address: string, signature: string): void => {
 export const getUserSession = (address: string): string | null => {
   if (!address) return null;
 
-  return null;
+  try {
+    // Get encrypted session data
+    const encryptedData = localStorage.getItem(`monadMatch_session_${address}`);
+    if (!encryptedData) return null;
 
-  // try {
-  //   // Get encrypted session data
-  //   const encryptedData = localStorage.getItem(`monadMatch_session_${address}`);
-  //   if (!encryptedData) return null;
+    // Decrypt the data
+    const encryptionKey = deriveEncryptionKey(address);
+    const sessionDataString = decryptData(encryptedData, encryptionKey);
+    const sessionData = JSON.parse(sessionDataString) as SessionData;
 
-  //   // Decrypt the data
-  //   const encryptionKey = deriveEncryptionKey(address);
-  //   const sessionDataString = decryptData(encryptedData, encryptionKey);
-  //   const sessionData = JSON.parse(sessionDataString) as SessionData;
+    // Check if session has expired
+    if (sessionData.expiresAt < Date.now()) {
+      console.log(`Session for ${address} has expired, removing`);
+      localStorage.removeItem(`monadMatch_session_${address}`);
+      return null;
+    }
 
-  //   // Check if session has expired
-  //   if (sessionData.expiresAt < Date.now()) {
-  //     console.log(`Session for ${address} has expired, removing`);
-  //     localStorage.removeItem(`monadMatch_session_${address}`);
-  //     return null;
-  //   }
-
-  //   // Return the valid signature
-  //   return sessionData.signature;
-  // } catch (error) {
-  //   console.error("Failed to retrieve user session:", error);
-  //   // Clean up any corrupted data
-  //   localStorage.removeItem(`monadMatch_session_${address}`);
-  //   return null;
-  // }
+    // Return the valid signature
+    return sessionData.signature;
+  } catch (error) {
+    console.error("Failed to retrieve user session:", error);
+    // Clean up any corrupted data
+    localStorage.removeItem(`monadMatch_session_${address}`);
+    return null;
+  }
 };
 
 /**

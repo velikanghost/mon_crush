@@ -20,8 +20,12 @@ import { clearTxHashesFromDB } from "~~/services/indexeddb/transactionDB";
 import { initMatchSound } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
 import { decryptData, deriveEncryptionKey, encryptData } from "~~/services/utils/crypto";
-import { clearUserSession, getUserSession, storeUserSession } from "~~/services/utils/sessionStorage";
-import { extendUserSession } from "~~/services/utils/sessionStorage";
+import {
+  clearUserSession,
+  extendUserSession,
+  getUserSession,
+  storeUserSession,
+} from "~~/services/utils/sessionStorage";
 
 export default function Home() {
   const { signIn, isLoading, isSignedIn, user, error } = useSignIn({
@@ -37,7 +41,7 @@ export default function Home() {
   // Game Wallet State
   const [gameWallet, setGameWallet] = useState<LocalAccount | null>(null);
   const [depositAmount, setDepositAmount] = useState("0.01"); // Default deposit amount
-  const [gameWalletFunded, setGameWalletFunded] = useState<boolean>(false);
+  //const [gameWalletFunded, setGameWalletFunded] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0); // 0: Connect Farcaster, 1: Connect Wallet, 2: Sign, 3: Fund, 4: Play
 
   const { sendTransactionAsync } = useSendTransaction();
@@ -48,17 +52,17 @@ export default function Home() {
   // Ref to prevent duplicate wallet restoration and toasts
   const hasRestoredWallet = useRef(false);
 
-  // Get on-chain high score for the connected address
-  const { data: onChainHighScore } = useScaffoldReadContract({
-    contractName: "MonadMatch", // Use the correct contract name from your project
-    functionName: "playerScores", // Use the correct function name from your contract
-    args: [connectedAddress],
-  });
+  // // Get on-chain high score for the connected address
+  // const { data: onChainHighScore } = useScaffoldReadContract({
+  //   contractName: "MonadMatch", // Use the correct contract name from your project
+  //   functionName: "playerScores", // Use the correct function name from your contract
+  //   args: [connectedAddress],
+  // });
 
-  // Set up write contract for updating high score
-  const { writeContractAsync: writeHighScore } = useScaffoldWriteContract({
-    contractName: "MonadMatch", // Use the correct contract name from your project
-  });
+  // // Set up write contract for updating high score
+  // const { writeContractAsync: writeHighScore } = useScaffoldWriteContract({
+  //   contractName: "MonadMatch", // Use the correct contract name from your project
+  // });
 
   // Read contract data for game wallet linking
   const { data: mainWalletForGameWallet } = useScaffoldReadContract({
@@ -172,14 +176,14 @@ export default function Home() {
 
     try {
       toast.loading("Processing deposit...");
-      const tx = await sendTransactionAsync({
+      await sendTransactionAsync({
         to: gameWallet.address,
         value: parseEther(depositAmount),
       });
 
       toast.dismiss(); // Dismiss loading toast
       toast.success(`Successfully deposited ${depositAmount} MON!`);
-      setGameWalletFunded(true);
+      //setGameWalletFunded(true);
 
       // After successful funding, automatically try to link the wallet
       await handleLinkGameWallet();
@@ -345,16 +349,16 @@ export default function Home() {
   ]);
 
   // Prepare handleOpenDrawer function for Stats
-  const handleOpenDrawer = () => {
-    // Also initialize audio on first interaction
-    if (!audioInitialized) {
-      initAudio();
-    }
+  // const handleOpenDrawer = () => {
+  //   // Also initialize audio on first interaction
+  //   if (!audioInitialized) {
+  //     initAudio();
+  //   }
 
-    if (gameStore.setIsDrawerOpen) {
-      gameStore.setIsDrawerOpen(true);
-    }
-  };
+  //   if (gameStore.setIsDrawerOpen) {
+  //     gameStore.setIsDrawerOpen(true);
+  //   }
+  // };
 
   // Handle game reset
   const handleResetGame = async () => {
@@ -488,7 +492,7 @@ export default function Home() {
                   gameStore.setAddress(guestId);
 
                   // Initialize the game
-                  setGameWalletFunded(true); // Skip funding step
+                  //setGameWalletFunded(true); // Skip funding step
                   setCurrentStep(4); // Jump directly to game
 
                   // Initialize the game after a short delay

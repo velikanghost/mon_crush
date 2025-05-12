@@ -9,7 +9,6 @@ interface StatsProps {
 }
 
 const Stats = ({
-  handleOpenDrawer,
   txCount: propsTxCount,
   score: propsScore,
   highScore: propsHighScore,
