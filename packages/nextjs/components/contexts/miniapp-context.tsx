@@ -1,16 +1,10 @@
 "use client";
+
+import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
+import FrameWalletProvider from "./frame-wallet-context";
 import { AddFrameResult } from "@farcaster/frame-core/dist/actions/addFrame";
 import { FrameContext } from "@farcaster/frame-core/dist/context";
 import { sdk } from "@farcaster/frame-sdk";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
-import FrameWalletProvider from "./frame-wallet-context";
 
 interface MiniAppContextType {
   isMiniAppReady: boolean;
@@ -21,13 +15,7 @@ interface MiniAppContextType {
 
 const MiniAppContext = createContext<MiniAppContextType | undefined>(undefined);
 
-export function MiniAppProvider({
-  addMiniAppOnLoad,
-  children,
-}: {
-  addMiniAppOnLoad?: boolean;
-  children: ReactNode;
-}) {
+export function MiniAppProvider({ addMiniAppOnLoad, children }: { addMiniAppOnLoad?: boolean; children: ReactNode }) {
   const [context, setContext] = useState<FrameContext | null>(null);
   const [isMiniAppReady, setIsMiniAppReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,12 +63,7 @@ export function MiniAppProvider({
     if (isMiniAppReady && !context?.client?.added && addMiniAppOnLoad) {
       handleAddMiniApp();
     }
-  }, [
-    isMiniAppReady,
-    context?.client?.added,
-    handleAddMiniApp,
-    addMiniAppOnLoad,
-  ]);
+  }, [isMiniAppReady, context?.client?.added, handleAddMiniApp, addMiniAppOnLoad]);
 
   return (
     <MiniAppContext.Provider

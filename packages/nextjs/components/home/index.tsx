@@ -6,12 +6,11 @@ import { LocalAccount } from "viem";
 import { parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { useAccount, useSendTransaction, useSwitchChain } from "wagmi";
-import { ChevronRightIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/outline";
 import { SwitchTheme } from "~~/components/SwitchTheme";
-import Board from "~~/components/home/Board";
-import Stats from "~~/components/home/Stats";
-import { User } from "~~/components/home/User";
-import { GameWalletDetails } from "~~/components/scaffold-eth/GameWalletDetails";
+import { ConnectFarcasterStep } from "~~/components/home/ConnectFarcasterStep";
+import { FundWalletStep } from "~~/components/home/FundWalletStep";
+import { GameBoardStep } from "~~/components/home/GameBoardStep";
+import { GenerateWalletStep } from "~~/components/home/GenerateWalletStep";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { useSignIn } from "~~/hooks/use-sign-in";
 import { monadTestnet } from "~~/scaffold.config";
@@ -20,12 +19,7 @@ import { clearTxHashesFromDB } from "~~/services/indexeddb/transactionDB";
 import { initMatchSound } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
 import { decryptData, deriveEncryptionKey, encryptData } from "~~/services/utils/crypto";
-import {
-  clearUserSession,
-  extendUserSession,
-  getUserSession,
-  storeUserSession,
-} from "~~/services/utils/sessionStorage";
+import { clearUserSession, extendUserSession, getUserSession } from "~~/services/utils/sessionStorage";
 
 export default function Home() {
   const { signIn, isLoading, isSignedIn, user, error } = useSignIn({
@@ -41,8 +35,7 @@ export default function Home() {
   // Game Wallet State
   const [gameWallet, setGameWallet] = useState<LocalAccount | null>(null);
   const [depositAmount, setDepositAmount] = useState("0.1"); // Default deposit amount
-  //const [gameWalletFunded, setGameWalletFunded] = useState<boolean>(false);
-  const [currentStep, setCurrentStep] = useState<number>(0); // 0: Connect Farcaster, 1: Connect Wallet, 2: Sign, 3: Fund, 4: Play
+  const [currentStep, setCurrentStep] = useState<number>(0);
 
   const { sendTransactionAsync } = useSendTransaction();
 
@@ -171,7 +164,6 @@ export default function Home() {
 
       toast.dismiss(); // Dismiss loading toast
       toast.success(`Successfully deposited ${depositAmount} MON!`);
-      //setGameWalletFunded(true);
 
       // After successful funding, automatically try to link the wallet
       await handleLinkGameWallet();
@@ -180,17 +172,6 @@ export default function Home() {
       toast.error(`Deposit failed: ${error.message}`);
     }
   };
-
-  // Add debug logging near the top of the component to track state changes
-  useEffect(() => {
-    console.log("Home component state:", {
-      currentStep,
-      isSignedIn,
-      user: user?.fid ? `FID: ${user.fid}` : "No user",
-      isConnected: isConnected ? "Yes" : "No",
-      gameWallet: gameWallet ? `${gameWallet.address.slice(0, 6)}...` : "None",
-    });
-  }, [currentStep, isSignedIn, user, isConnected, gameWallet]);
 
   // Fix the Farcaster authentication and step transitions
   useEffect(() => {
@@ -260,12 +241,6 @@ export default function Home() {
     if (isSignedIn && user) {
       // Update FID ref
       previousFidRef.current = user.fid;
-
-      // COMMENTED OUT: This conflicts with the wallet restoration in the previous useEffect
-      // Move to the "Connect Wallet" step if we're on the initial connection step
-      // if (currentStep === 0) {
-      //   setCurrentStep(1); // Move to "Initialize Game Wallet" step
-      // }
 
       // If wallet address is available, update the reference
       if (connectedAddress) {
@@ -372,18 +347,6 @@ export default function Home() {
     user,
   ]);
 
-  // Prepare handleOpenDrawer function for Stats
-  // const handleOpenDrawer = () => {
-  //   // Also initialize audio on first interaction
-  //   if (!audioInitialized) {
-  //     initAudio();
-  //   }
-
-  //   if (gameStore.setIsDrawerOpen) {
-  //     gameStore.setIsDrawerOpen(true);
-  //   }
-  // };
-
   // Handle game reset
   const handleResetGame = async () => {
     // Extend user session when they reset the game
@@ -455,333 +418,41 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array ensures this runs only once on mount
 
-  // Conditional Rendering based on the current step
+  // Render the appropriate step based on currentStep value
   const renderStepContent = () => {
     switch (currentStep) {
       case 0: // Connect to Farcaster Step
         return (
-          <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Connect with Farcaster</h3>
-            <p className="text-center">Please connect your Farcaster account to get started with Monad Match.</p>
-
-            {/* Farcaster User component with connection status */}
-            <User />
-
-            {/* Debug information */}
-            <div className="p-2 mt-2 text-xs bg-base-300 rounded-box">
-              <p>Status: {isLoading ? "Loading..." : isSignedIn ? "Signed In" : "Not Signed In"}</p>
-              {user && (
-                <p>
-                  User: {user.display_name || user.username} (FID: {user.fid})
-                </p>
-              )}
-              {error && <p className="text-error">Error: {error}</p>}
-            </div>
-
-            {/* Manual sign-in button as fallback */}
-            {!isLoading && !isSignedIn && (
-              <button
-                className="w-full btn btn-primary"
-                onClick={() => {
-                  console.log("Manual sign-in button clicked");
-                  toast.loading("Connecting to Farcaster...");
-                  signIn()
-                    .then(() => toast.dismiss())
-                    .catch(err => {
-                      toast.dismiss();
-                      toast.error(`Failed to connect: ${err.message || "Unknown error"}`);
-                    });
-                }}
-              >
-                Connect Manually
-              </button>
-            )}
-
-            {/* Skip button */}
-            {/* <div className="w-full pt-2 mt-2 border-t border-base-300">
-              <button
-                className="w-full btn btn-outline"
-                onClick={() => {
-                  // Generate a random guest wallet
-                  const privateKey = generatePrivateKey();
-                  const account = privateKeyToAccount(privateKey);
-                  setGameWallet(account);
-
-                  // Store the private key and address in the game store
-                  gameStore.setGameWalletPrivateKey(privateKey);
-                  gameStore.setGameWalletAddress(account.address);
-
-                  // Set a guest session identifier
-                  const guestId = `guest_${Date.now()}`;
-                  gameStore.setAddress(guestId);
-
-                  // Initialize the game
-                  //setGameWalletFunded(true); // Skip funding step
-                  setCurrentStep(3); // Jump directly to game
-
-                  // Initialize the game after a short delay
-                  setTimeout(() => {
-                    if (gameStore.initGame) {
-                      gameStore.initGame();
-                    }
-                  }, 100);
-
-                  toast.success("Entered as guest. Enjoy the game!");
-                }}
-              >
-                Skip and Play as Guest
-              </button>
-              <p className="mt-2 text-xs text-center text-base-content/70">
-                Note: Playing as guest limits blockchain interactions.
-              </p>
-            </div> */}
-          </div>
+          <ConnectFarcasterStep
+            isLoading={isLoading}
+            isSignedIn={isSignedIn}
+            user={user}
+            error={error}
+            signIn={signIn}
+          />
         );
       case 1: // Generate Wallet Step
-        return (
-          <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Generate Game Wallet</h3>
-            <p className="text-center">
-              No existing game wallet found for {user?.username || "your account"}. Click below to generate a new one.
-            </p>
-            <button className="btn btn-secondary" onClick={generateGameWallet}>
-              Generate New Game Wallet
-            </button>
-          </div>
-        );
+        return <GenerateWalletStep user={user} generateGameWallet={generateGameWallet} />;
       case 2: // Fund Wallet Step
         return (
-          <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Fund Your Game Wallet</h3>
-            <p className="text-center">
-              Deposit MON from your Farcaster wallet on Monad Testnet to your game wallet to cover transaction fees.
-            </p>
-            <div className="flex items-center gap-2 text-lg">
-              <span className="font-mono">
-                {gameWallet?.address.slice(0, 6)}...{gameWallet?.address.slice(-4)}
-              </span>
-              <button
-                className="text-xs btn btn-ghost btn-xs"
-                onClick={() => navigator.clipboard.writeText(gameWallet?.address ?? "")}
-                disabled={!gameWallet}
-              >
-                Copy
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                value={depositAmount}
-                onChange={e => setDepositAmount(e.target.value)}
-                className="w-24 input input-bordered input-sm"
-                min="0.001"
-                step="0.001"
-              />
-              <span>MON</span>
-            </div>
-
-            <button className="w-full btn btn-accent" onClick={depositTokens} disabled={!gameWallet}>
-              Deposit Funds & Link Wallet
-            </button>
-
-            <p className="text-xs text-center">Make sure your Farcaster wallet is connected to Monad Testnet.</p>
-          </div>
+          <FundWalletStep
+            gameWallet={gameWallet}
+            depositAmount={depositAmount}
+            setDepositAmount={setDepositAmount}
+            depositTokens={depositTokens}
+          />
         );
       case 3: // Play Game (Main Game UI)
         return (
-          <div className="flex flex-col w-full h-full">
-            {/* Top Row - Game Title and Stats */}
-            <div className="flex flex-row items-center justify-between w-full px-4 py-2 mb-2">
-              <div className="flex flex-col">
-                <div className="text-xl font-bold">Monad Match</div>
-                <div className="text-sm opacity-70">Match monanimals to earn points!</div>
-                {gameStore.gameStatus && (
-                  <div className="mt-1 text-xs text-accent animate-pulse">{gameStore.gameStatus}</div>
-                )}
-                {/* Guest mode indicator */}
-                {!user && (
-                  <div className="mt-1 text-xs italic text-warning">Playing as guest - blockchain features limited</div>
-                )}
-              </div>
-
-              {/* Controls */}
-              <div className="flex items-center gap-2">
-                {/* Farcaster Profile or Guest Icon*/}
-                {user ? (
-                  <label htmlFor="wallet-drawer" className="flex items-center rounded-full">
-                    {user.pfp_url && (
-                      <img src={user.pfp_url} className="w-8 h-8 rounded-full" alt="Farcaster Profile" />
-                    )}
-                    <ChevronRightIcon className="w-4 h-4 font-bold" color="black" strokeWidth={2} />
-                  </label>
-                ) : (
-                  <label htmlFor="wallet-drawer" className="flex items-center p-1 bg-gray-200 rounded-full">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="w-6 h-6"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                      />
-                    </svg>
-                    <ChevronRightIcon className="w-4 h-4 font-bold" color="black" strokeWidth={2} />
-                  </label>
-                )}
-              </div>
-            </div>
-
-            {/* Stats Row - Quick Access to Key Stats */}
-            <div className="flex justify-center w-full px-4 mb-4">
-              <Stats
-                handleOpenDrawer={() => {
-                  const drawerElement = document.getElementById("wallet-drawer") as HTMLInputElement;
-                  if (drawerElement) drawerElement.checked = true;
-                }}
-              />
-            </div>
-
-            {/* Game Board - Full Width */}
-            <div className="flex flex-col items-center justify-center flex-grow w-full px-2" onClick={handleBoardClick}>
-              {gameWallet && gameStore.gameBoard ? (
-                <>
-                  <Board />
-                  <button className="w-full h-10 px-4 mt-8 mb-4 btn btn-primary" onClick={handleResetGame}>
-                    Reset
-                  </button>
-                </>
-              ) : (
-                <div className="text-xl text-center">Initializing Game Board...</div>
-              )}
-            </div>
-
-            {/* Wallet and Transaction History Drawer */}
-            <div className="drawer drawer-end">
-              <input id="wallet-drawer" type="checkbox" className="drawer-toggle" />
-              <div className="z-50 drawer-side">
-                <label htmlFor="wallet-drawer" className="drawer-overlay"></label>
-                <div className="flex flex-col w-full min-h-full p-4 bg-base-200 text-base-content">
-                  {/* Drawer Header */}
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-bold">Wallet & Transactions</h3>
-                    <label htmlFor="wallet-drawer" className="btn btn-sm btn-circle">
-                      ✕
-                    </label>
-                  </div>
-
-                  {/* Farcaster Profile */}
-                  {user ? (
-                    <div className="flex items-center justify-between gap-2 px-3 py-2 mb-4 rounded-lg bg-base-100">
-                      <div className="flex items-center gap-2">
-                        {user.pfp_url && (
-                          <img src={user.pfp_url} className="w-8 h-8 rounded-full" alt="Farcaster Profile" />
-                        )}
-                        <div className="text-sm font-medium">{user.display_name || user.username}</div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {/* Main Wallet Connection */}
-
-                        <button
-                          className="btn btn-circle btn-sm btn-secondary"
-                          onClick={handleToggleMusic}
-                          title={musicPlaying ? "Mute Music" : "Play Music"}
-                        >
-                          {musicPlaying ? (
-                            <SpeakerWaveIcon className="w-4 h-4" />
-                          ) : (
-                            <SpeakerXMarkIcon className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Guest Mode Profile */
-                    <div className="flex items-center justify-between gap-2 px-3 py-2 mb-4 border border-yellow-200 rounded-lg bg-yellow-50">
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center justify-center w-8 h-8 bg-yellow-100 rounded-full">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="w-5 h-5 text-yellow-600"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                            />
-                          </svg>
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium">Guest Mode</div>
-                          <div className="text-xs text-yellow-600">Limited blockchain features</div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="btn btn-circle btn-sm btn-secondary"
-                          onClick={handleToggleMusic}
-                          title={musicPlaying ? "Mute Music" : "Play Music"}
-                        >
-                          {musicPlaying ? (
-                            <SpeakerWaveIcon className="w-4 h-4" />
-                          ) : (
-                            <SpeakerXMarkIcon className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Game Wallet Details */}
-                  <div className="p-4 mb-4 rounded-lg shadow-md bg-base-100">
-                    <GameWalletDetails />
-                  </div>
-
-                  {/* Transaction History */}
-                  <div className="mb-4">
-                    <h4 className="mb-2 font-semibold text-md">Transaction History</h4>
-                    <div className="p-2 overflow-y-auto border rounded-lg border-base-300 max-h-60">
-                      {gameStore.txHashes && gameStore.txHashes.length > 0 ? (
-                        <ul className="space-y-2">
-                          {gameStore.txHashes.map((tx, index) => (
-                            <li key={index} className="text-xs break-all">
-                              <a
-                                href={`${process.env.NEXT_PUBLIC_MONAD_EXPLORER_URL}/tx/${tx}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-accent hover:underline"
-                              >
-                                {tx.slice(0, 10)}...{tx.slice(-8)}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-xs text-center opacity-70">No transactions yet</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Game Controls */}
-                  <div className="mt-auto">
-                    <button className="w-full btn btn-primary" onClick={handleResetGame}>
-                      Reset Game
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <GameBoardStep
+            gameStore={gameStore}
+            musicPlaying={musicPlaying}
+            handleToggleMusic={handleToggleMusic}
+            handleResetGame={handleResetGame}
+            handleBoardClick={handleBoardClick}
+            gameWallet={gameWallet}
+            user={user}
+          />
         );
       default:
         return <div>Loading...</div>; // Or some initial loading state
@@ -795,10 +466,10 @@ export default function Home() {
         {/* Main Layout - Fixed height, no scrolling */}
         <div className="flex justify-between overflow-hidden mt-[2%] gap-6 flex-grow">
           {/* Conditional Rendering for Steps or Game */}
-          {currentStep < 4 ? (
+          {currentStep < 3 ? (
             <div className="flex items-center justify-center w-full">{renderStepContent()}</div>
           ) : (
-            renderStepContent() // Render game layout for step 4
+            renderStepContent() // Render game layout for step 3
           )}
         </div>
 
