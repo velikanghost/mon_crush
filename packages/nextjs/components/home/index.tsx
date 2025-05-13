@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Footer } from "../Footer";
 import toast from "react-hot-toast";
-import { LocalAccount } from "viem";
+import { Account, LocalAccount } from "viem";
 import { parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { useAccount, useSendTransaction, useSwitchChain } from "wagmi";
@@ -84,38 +84,6 @@ export default function Home() {
     setMusicPlaying(isPlaying);
   };
 
-  // Function to generate a new game wallet
-  const generateGameWallet = async () => {
-    if (!isSignedIn || !user) {
-      toast.error("User is missing. Please sign in again.");
-      setCurrentStep(0); // Go back to signing step
-      return;
-    }
-
-    try {
-      // Create a unique identifier combining Farcaster FID and wallet address
-      const userIdentifier = user ? `${user.fid}_${connectedAddress || ""}` : connectedAddress || "farcaster-user";
-
-      const privateKey = generatePrivateKey();
-      const account = privateKeyToAccount(privateKey);
-      setGameWallet(account);
-
-      // Store the private key and address in the game store for transaction signing
-      gameStore.setGameWalletPrivateKey(privateKey);
-      gameStore.setGameWalletAddress(account.address);
-
-      // Encrypt and store the private key
-      const key = deriveEncryptionKey(user?.fid.toString());
-      const encryptedPrivateKey = encryptData(privateKey, key);
-      localStorage.setItem(`gameWallet_${userIdentifier}`, encryptedPrivateKey);
-
-      toast.success("New game wallet generated!");
-      setCurrentStep(2); // Move to funding step
-    } catch (error) {
-      toast.error("Failed to generate game wallet.");
-    }
-  };
-
   // Function to link game wallet on-chain
   const handleLinkGameWallet = async () => {
     if (!gameWallet || !connectedAddress) {
@@ -126,7 +94,7 @@ export default function Home() {
     // Check if already linked
     if (mainWalletForGameWallet === connectedAddress) {
       toast.success("Game wallet already linked to this main wallet.");
-      setCurrentStep(3); // Move to game if already linked
+      setCurrentStep(2); // Move to game if already linked
       return;
     }
     // Check if linked to another main wallet (should ideally not happen with current logic)
@@ -142,7 +110,7 @@ export default function Home() {
         args: [gameWallet.address],
       });
       toast.success("Game wallet successfully linked on-chain!");
-      setCurrentStep(3); // Move to the game playing step
+      setCurrentStep(2); // Move to the game playing step
     } catch (error: any) {
       console.error("Error linking game wallet:", error);
       toast.error(`Failed to link game wallet: ${error.message || error}`);
@@ -175,46 +143,51 @@ export default function Home() {
   };
 
   // Fix the Farcaster authentication and step transitions
-  useEffect(() => {
-    // Handle Farcaster sign-in completion
-    if (isSignedIn && user && currentStep === 0) {
-      // Check for existing wallet data immediately after sign-in
-      const userIdentifier = user ? `${user.fid}_${connectedAddress || ""}` : connectedAddress || "farcaster-user";
-      const savedWalletData = localStorage.getItem(`gameWallet_${userIdentifier}`);
-      if (savedWalletData) {
-        try {
-          const key = deriveEncryptionKey(user.fid.toString());
-          const privateKey = decryptData(savedWalletData, key);
-          const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
-          const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
+  // useEffect(() => {
+  //   // Handle Farcaster sign-in completion
+  //   // if (isSignedIn && user && currentStep === 0) {
+  //   //   // Check for existing wallet data immediately after sign-in
+  //   //   const userIdentifier = user ? `${user.fid}_${connectedAddress || ""}` : connectedAddress || "farcaster-user";
+  //   //   const savedWalletData = localStorage.getItem(`gameWallet_${userIdentifier}`);
+  //   //   if (savedWalletData) {
+  //   //     try {
+  //   //       const key = deriveEncryptionKey(user.fid.toString());
+  //   //       const privateKey = decryptData(savedWalletData, key);
+  //   //       const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+  //   //       const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
 
-          setGameWallet(account);
-          gameStore.setGameWalletPrivateKey(formattedPrivateKey);
-          gameStore.setGameWalletAddress(account.address);
+  //   //       setGameWallet(account);
+  //   //       gameStore.setGameWalletPrivateKey(formattedPrivateKey);
+  //   //       gameStore.setGameWalletAddress(account.address);
 
-          setCurrentStep(3); // Skip directly to game
-          toast.success("Existing game wallet restored! Skipping to game.");
-          return;
-        } catch (error) {
-          console.error("Failed to restore wallet after sign-in:", error);
-          // If error, remove corrupted wallet and continue to step 2
-          localStorage.removeItem(`gameWallet_${userIdentifier}`);
-        }
-      }
-      // If no wallet, proceed to step 2 (generate wallet)
-      setCurrentStep(1);
-      toast.success(
-        `Welcome, ${user.display_name || user.username || "Farcaster user"}! Please generate a game wallet.`,
-      );
-    }
-  }, [
-    isSignedIn,
-    user,
-    currentStep,
-    connectedAddress,
-    gameStore.setGameWalletPrivateKey,
-    gameStore.setGameWalletAddress,
-  ]);
+  //   //       setCurrentStep(3); // Skip directly to game
+  //   //       toast.success("Existing game wallet restored! Skipping to game.");
+  //   //       return;
+  //   //     } catch (error) {
+  //   //       console.error("Failed to restore wallet after sign-in:", error);
+  //   //       // If error, remove corrupted wallet and continue to step 2
+  //   //       localStorage.removeItem(`gameWallet_${userIdentifier}`);
+  //   //     }
+  //   //   }
+  //   //   // If no wallet, proceed to step 2 (generate wallet)
+  //   //   setCurrentStep(1);
+  //   //   toast.success(
+  //   //     `Welcome, ${user.display_name || user.username || "Farcaster user"}! Please generate a game wallet.`,
+  //   //   );
+  //   // }
+
+  //   console.log("isSignedIn", isSignedIn);
+  //   console.log("user", user);
+  //   console.log("currentStep", currentStep);
+  //   console.log("connectedAddress", connectedAddress);
+  // }, [
+  //   isSignedIn,
+  //   user,
+  //   currentStep,
+  //   connectedAddress,
+  //   gameStore.setGameWalletPrivateKey,
+  //   gameStore.setGameWalletAddress,
+  // ]);
 
   // Initialize game when component mounts and Farcaster user is connected
   useEffect(() => {
@@ -291,7 +264,7 @@ export default function Home() {
 
   // Existing useEffect for game init - Now conditional on game wallet being ready (Step 4)
   useEffect(() => {
-    if (currentStep === 3 && gameWallet) {
+    if (currentStep === 2 && gameWallet) {
       // Initialize the actual game logic only when wallet is ready and linked
       if (gameStore.initGame) {
         // Check if we're in guest mode (no Farcaster user)
@@ -429,11 +402,13 @@ export default function Home() {
             user={user}
             error={error}
             signIn={signIn}
+            currentStep={currentStep}
+            setCurrentStep={setCurrentStep}
+            connectedAddress={connectedAddress || ""}
+            setGameWallet={setGameWallet as (wallet: LocalAccount) => void}
           />
         );
-      case 1: // Generate Wallet Step
-        return <GenerateWalletStep user={user} generateGameWallet={generateGameWallet} />;
-      case 2: // Fund Wallet Step
+      case 1: // Fund Wallet Step
         return (
           <FundWalletStep
             gameWallet={gameWallet}
@@ -442,7 +417,7 @@ export default function Home() {
             depositTokens={depositTokens}
           />
         );
-      case 3: // Play Game (Main Game UI)
+      case 2: // Play Game (Main Game UI)
         return (
           <GameBoardStep
             gameStore={gameStore}
@@ -466,7 +441,7 @@ export default function Home() {
         {/* Main Layout - Fixed height, no scrolling */}
         <div className="flex justify-between overflow-hidden mt-[2%] gap-6 flex-grow">
           {/* Conditional Rendering for Steps or Game */}
-          {currentStep < 3 ? (
+          {currentStep < 2 ? (
             <div className="flex items-center justify-center w-full">{renderStepContent()}</div>
           ) : (
             renderStepContent() // Render game layout for step 3

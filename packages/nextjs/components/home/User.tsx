@@ -9,14 +9,6 @@ export const User = () => {
     autoSignIn: true,
   });
 
-  // Show error messages from the sign-in process
-  useEffect(() => {
-    if (error) {
-      toast.error(`Sign-in error: ${error}`);
-      console.error("Sign-in error:", error);
-    }
-  }, [error]);
-
   // Log authentication state for debugging
   useEffect(() => {
     console.log("Farcaster auth state:", { isSignedIn, isLoading, user });
