@@ -247,7 +247,6 @@ export default function Home() {
       if (connectedAddress) {
         previousAddressRef.current = connectedAddress;
 
-        // Switch to Monad Testnet when wallet is connected
         const switchToMonadTestnet = async () => {
           try {
             await switchChain({ chainId: monadTestnet.id });
