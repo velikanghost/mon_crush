@@ -2,7 +2,6 @@
 
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
 import FrameWalletProvider from "./frame-wallet-context";
-import { AddFrameResult } from "@farcaster/frame-core/dist/actions/addFrame";
 import { FrameContext } from "@farcaster/frame-core/dist/context";
 import { sdk } from "@farcaster/frame-sdk";
 
@@ -10,7 +9,7 @@ interface MiniAppContextType {
   isMiniAppReady: boolean;
   context: FrameContext | null;
   setMiniAppReady: () => void;
-  addMiniApp: () => Promise<AddFrameResult | null>;
+  addMiniApp: () => Promise<any | null>;
 }
 
 const MiniAppContext = createContext<MiniAppContextType | undefined>(undefined);
