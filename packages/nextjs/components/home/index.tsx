@@ -40,7 +40,7 @@ export default function Home() {
 
   // Game Wallet State
   const [gameWallet, setGameWallet] = useState<LocalAccount | null>(null);
-  const [depositAmount, setDepositAmount] = useState("0.01"); // Default deposit amount
+  const [depositAmount, setDepositAmount] = useState("0.1"); // Default deposit amount
   //const [gameWalletFunded, setGameWalletFunded] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<number>(0); // 0: Connect Farcaster, 1: Connect Wallet, 2: Sign, 3: Fund, 4: Play
 
@@ -51,18 +51,6 @@ export default function Home() {
   const previousFidRef = useRef<string | undefined>(undefined);
   // Ref to prevent duplicate wallet restoration and toasts
   const hasRestoredWallet = useRef(false);
-
-  // // Get on-chain high score for the connected address
-  // const { data: onChainHighScore } = useScaffoldReadContract({
-  //   contractName: "MonadMatch", // Use the correct contract name from your project
-  //   functionName: "playerScores", // Use the correct function name from your contract
-  //   args: [connectedAddress],
-  // });
-
-  // // Set up write contract for updating high score
-  // const { writeContractAsync: writeHighScore } = useScaffoldWriteContract({
-  //   contractName: "MonadMatch", // Use the correct contract name from your project
-  // });
 
   // Read contract data for game wallet linking
   const { data: mainWalletForGameWallet } = useScaffoldReadContract({
@@ -106,7 +94,7 @@ export default function Home() {
   const generateGameWallet = async () => {
     if (!isSignedIn || !user) {
       toast.error("User is missing. Please sign in again.");
-      setCurrentStep(1); // Go back to signing step
+      setCurrentStep(0); // Go back to signing step
       return;
     }
 
@@ -128,7 +116,7 @@ export default function Home() {
       localStorage.setItem(`gameWallet_${userIdentifier}`, encryptedPrivateKey);
 
       toast.success("New game wallet generated!");
-      setCurrentStep(3); // Move to funding step
+      setCurrentStep(2); // Move to funding step
     } catch (error) {
       toast.error("Failed to generate game wallet.");
     }
@@ -144,7 +132,7 @@ export default function Home() {
     // Check if already linked
     if (mainWalletForGameWallet === connectedAddress) {
       toast.success("Game wallet already linked to this main wallet.");
-      setCurrentStep(4); // Move to game if already linked
+      setCurrentStep(3); // Move to game if already linked
       return;
     }
     // Check if linked to another main wallet (should ideally not happen with current logic)
@@ -160,7 +148,7 @@ export default function Home() {
         args: [gameWallet.address],
       });
       toast.success("Game wallet successfully linked on-chain!");
-      setCurrentStep(4); // Move to the game playing step
+      setCurrentStep(3); // Move to the game playing step
     } catch (error: any) {
       console.error("Error linking game wallet:", error);
       toast.error(`Failed to link game wallet: ${error.message || error}`);
@@ -208,12 +196,43 @@ export default function Home() {
   useEffect(() => {
     // Handle Farcaster sign-in completion
     if (isSignedIn && user && currentStep === 0) {
-      console.log("✅ Farcaster sign-in complete, progressing to next step", { user });
-      // Force move to next step
+      // Check for existing wallet data immediately after sign-in
+      const userIdentifier = user ? `${user.fid}_${connectedAddress || ""}` : connectedAddress || "farcaster-user";
+      const savedWalletData = localStorage.getItem(`gameWallet_${userIdentifier}`);
+      if (savedWalletData) {
+        try {
+          const key = deriveEncryptionKey(user.fid.toString());
+          const privateKey = decryptData(savedWalletData, key);
+          const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+          const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
+
+          setGameWallet(account);
+          gameStore.setGameWalletPrivateKey(formattedPrivateKey);
+          gameStore.setGameWalletAddress(account.address);
+
+          setCurrentStep(3); // Skip directly to game
+          toast.success("Existing game wallet restored! Skipping to game.");
+          return;
+        } catch (error) {
+          console.error("Failed to restore wallet after sign-in:", error);
+          // If error, remove corrupted wallet and continue to step 2
+          localStorage.removeItem(`gameWallet_${userIdentifier}`);
+        }
+      }
+      // If no wallet, proceed to step 2 (generate wallet)
       setCurrentStep(1);
-      toast.success(`Welcome, ${user.display_name || user.username || "Farcaster user"}!`);
+      toast.success(
+        `Welcome, ${user.display_name || user.username || "Farcaster user"}! Please generate a game wallet.`,
+      );
     }
-  }, [isSignedIn, user, currentStep]);
+  }, [
+    isSignedIn,
+    user,
+    currentStep,
+    connectedAddress,
+    gameStore.setGameWalletPrivateKey,
+    gameStore.setGameWalletAddress,
+  ]);
 
   // Initialize game when component mounts and Farcaster user is connected
   useEffect(() => {
@@ -242,10 +261,11 @@ export default function Home() {
       // Update FID ref
       previousFidRef.current = user.fid;
 
+      // COMMENTED OUT: This conflicts with the wallet restoration in the previous useEffect
       // Move to the "Connect Wallet" step if we're on the initial connection step
-      if (currentStep === 0) {
-        setCurrentStep(1); // Move to "Initialize Game Wallet" step
-      }
+      // if (currentStep === 0) {
+      //   setCurrentStep(1); // Move to "Initialize Game Wallet" step
+      // }
 
       // If wallet address is available, update the reference
       if (connectedAddress) {
@@ -296,7 +316,7 @@ export default function Home() {
 
   // Existing useEffect for game init - Now conditional on game wallet being ready (Step 4)
   useEffect(() => {
-    if (currentStep === 4 && gameWallet) {
+    if (currentStep === 3 && gameWallet) {
       // Initialize the actual game logic only when wallet is ready and linked
       if (gameStore.initGame) {
         // Check if we're in guest mode (no Farcaster user)
@@ -333,7 +353,11 @@ export default function Home() {
         if (isGuestMode) {
           toast.success("Welcome to guest mode! Enjoy the game!");
           gameStore.setGameStatus("Guest mode active - Have fun!");
+        } else {
+          gameStore.setGameStatus("Game ready - Have fun!");
         }
+      } else {
+        console.error("❌ gameStore.initGame function not available!");
       }
     }
   }, [
@@ -474,7 +498,7 @@ export default function Home() {
             )}
 
             {/* Skip button */}
-            <div className="w-full pt-2 mt-2 border-t border-base-300">
+            {/* <div className="w-full pt-2 mt-2 border-t border-base-300">
               <button
                 className="w-full btn btn-outline"
                 onClick={() => {
@@ -493,7 +517,7 @@ export default function Home() {
 
                   // Initialize the game
                   //setGameWalletFunded(true); // Skip funding step
-                  setCurrentStep(4); // Jump directly to game
+                  setCurrentStep(3); // Jump directly to game
 
                   // Initialize the game after a short delay
                   setTimeout(() => {
@@ -510,56 +534,10 @@ export default function Home() {
               <p className="mt-2 text-xs text-center text-base-content/70">
                 Note: Playing as guest limits blockchain interactions.
               </p>
-            </div>
+            </div> */}
           </div>
         );
-      case 1: // Connect Wallet Step
-        return (
-          <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
-            <h3 className="text-xl font-semibold">Initialize Game Wallet</h3>
-            <p className="text-center">
-              Hi, {user?.display_name || user?.username || "Farcaster user"}! Click below to continue.
-            </p>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                // Move directly to the Generate Wallet step
-                setCurrentStep(2);
-
-                // Check for existing wallet data
-                if (user) {
-                  const userIdentifier = `${user.fid}_${connectedAddress || ""}`;
-                  const savedWalletData = localStorage.getItem(`gameWallet_${userIdentifier}`);
-
-                  // If wallet data exists, attempt to restore it
-                  if (savedWalletData) {
-                    try {
-                      const key = deriveEncryptionKey(user.fid.toString());
-                      const privateKey = decryptData(savedWalletData, key);
-                      const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
-                      const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
-
-                      setGameWallet(account);
-                      gameStore.setGameWalletPrivateKey(formattedPrivateKey);
-                      gameStore.setGameWalletAddress(account.address);
-
-                      // Skip directly to funding step
-                      setCurrentStep(3);
-                      toast.success("Existing game wallet restored!");
-                    } catch (error) {
-                      console.error("Failed to restore wallet:", error);
-                      // Keep on step 2 to generate new wallet
-                      localStorage.removeItem(`gameWallet_${userIdentifier}`);
-                    }
-                  }
-                }
-              }}
-            >
-              Initialize Game Wallet
-            </button>
-          </div>
-        );
-      case 2: // Generate Wallet Step
+      case 1: // Generate Wallet Step
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
             <h3 className="text-xl font-semibold">Generate Game Wallet</h3>
@@ -571,7 +549,7 @@ export default function Home() {
             </button>
           </div>
         );
-      case 3: // Fund Wallet Step
+      case 2: // Fund Wallet Step
         return (
           <div className="flex flex-col items-center p-6 space-y-4 bg-base-200 rounded-box">
             <h3 className="text-xl font-semibold">Fund Your Game Wallet</h3>
@@ -609,7 +587,7 @@ export default function Home() {
             <p className="text-xs text-center">Make sure your Farcaster wallet is connected to Monad Testnet.</p>
           </div>
         );
-      case 4: // Play Game (Main Game UI)
+      case 3: // Play Game (Main Game UI)
         return (
           <div className="flex flex-col w-full h-full">
             {/* Top Row - Game Title and Stats */}
