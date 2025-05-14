@@ -1069,6 +1069,567 @@ const deployedContracts = {
       deploymentFile: "run-1746597297.json",
       deploymentScript: "Deploy.s.sol",
     },
+    GameEscrow: {
+      address: "0x9cf1854c58c4e20a9e4d85c93797238a92e0247d",
+      abi: [
+        {
+          type: "constructor",
+          inputs: [
+            {
+              name: "_monadMatch",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "GAME_DURATION",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "cancelGame",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "createGame",
+          inputs: [
+            {
+              name: "player2FarcasterName",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "player1FarcasterName",
+              type: "string",
+              internalType: "string",
+            },
+          ],
+          outputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+          ],
+          stateMutability: "payable",
+        },
+        {
+          type: "function",
+          name: "endGame",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+          ],
+          outputs: [],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "farcasterNameToAddress",
+          inputs: [
+            {
+              name: "",
+              type: "string",
+              internalType: "string",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "gameNeedsEnding",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+          ],
+          outputs: [
+            {
+              name: "needsEnding",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getGameDetails",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+          ],
+          outputs: [
+            {
+              name: "gameDetails",
+              type: "tuple",
+              internalType: "struct GameEscrow.VersusGame",
+              components: [
+                {
+                  name: "player1",
+                  type: "address",
+                  internalType: "address",
+                },
+                {
+                  name: "player2",
+                  type: "address",
+                  internalType: "address",
+                },
+                {
+                  name: "wagerAmount",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "startTime",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "endTime",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "isActive",
+                  type: "bool",
+                  internalType: "bool",
+                },
+                {
+                  name: "isClaimed",
+                  type: "bool",
+                  internalType: "bool",
+                },
+                {
+                  name: "player1FarcasterName",
+                  type: "string",
+                  internalType: "string",
+                },
+                {
+                  name: "player2FarcasterName",
+                  type: "string",
+                  internalType: "string",
+                },
+                {
+                  name: "player1Score",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "player2Score",
+                  type: "uint256",
+                  internalType: "uint256",
+                },
+                {
+                  name: "player1ScoreSubmitted",
+                  type: "bool",
+                  internalType: "bool",
+                },
+                {
+                  name: "player2ScoreSubmitted",
+                  type: "bool",
+                  internalType: "bool",
+                },
+              ],
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getGameScores",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+          ],
+          outputs: [
+            {
+              name: "player1Score",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "player2Score",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "player1Submitted",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "player2Submitted",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "getPlayerActiveGames",
+          inputs: [
+            {
+              name: "player",
+              type: "address",
+              internalType: "address",
+            },
+          ],
+          outputs: [
+            {
+              name: "activeGameIds",
+              type: "bytes32[]",
+              internalType: "bytes32[]",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "joinGame",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+            {
+              name: "farcasterName",
+              type: "string",
+              internalType: "string",
+            },
+          ],
+          outputs: [],
+          stateMutability: "payable",
+        },
+        {
+          type: "function",
+          name: "monadMatch",
+          inputs: [],
+          outputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "contract MonadMatch",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "playerGames",
+          inputs: [
+            {
+              name: "",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "function",
+          name: "submitScore",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+            {
+              name: "score",
+              type: "uint256",
+              internalType: "uint256",
+            },
+          ],
+          outputs: [
+            {
+              name: "success",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          stateMutability: "nonpayable",
+        },
+        {
+          type: "function",
+          name: "versusGames",
+          inputs: [
+            {
+              name: "",
+              type: "bytes32",
+              internalType: "bytes32",
+            },
+          ],
+          outputs: [
+            {
+              name: "player1",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "player2",
+              type: "address",
+              internalType: "address",
+            },
+            {
+              name: "wagerAmount",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "startTime",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "endTime",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "isActive",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "isClaimed",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "player1FarcasterName",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "player2FarcasterName",
+              type: "string",
+              internalType: "string",
+            },
+            {
+              name: "player1Score",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "player2Score",
+              type: "uint256",
+              internalType: "uint256",
+            },
+            {
+              name: "player1ScoreSubmitted",
+              type: "bool",
+              internalType: "bool",
+            },
+            {
+              name: "player2ScoreSubmitted",
+              type: "bool",
+              internalType: "bool",
+            },
+          ],
+          stateMutability: "view",
+        },
+        {
+          type: "event",
+          name: "GameCancelled",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              indexed: true,
+              internalType: "bytes32",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "GameCreated",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              indexed: true,
+              internalType: "bytes32",
+            },
+            {
+              name: "player1",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "player1FarcasterName",
+              type: "string",
+              indexed: false,
+              internalType: "string",
+            },
+            {
+              name: "player2FarcasterName",
+              type: "string",
+              indexed: false,
+              internalType: "string",
+            },
+            {
+              name: "wagerAmount",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "GameEnded",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              indexed: true,
+              internalType: "bytes32",
+            },
+            {
+              name: "winner",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "prize",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "GameJoined",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              indexed: true,
+              internalType: "bytes32",
+            },
+            {
+              name: "player2",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "GameStarted",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              indexed: true,
+              internalType: "bytes32",
+            },
+            {
+              name: "startTime",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+            {
+              name: "endTime",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+          ],
+          anonymous: false,
+        },
+        {
+          type: "event",
+          name: "ScoreSubmitted",
+          inputs: [
+            {
+              name: "gameId",
+              type: "bytes32",
+              indexed: true,
+              internalType: "bytes32",
+            },
+            {
+              name: "player",
+              type: "address",
+              indexed: true,
+              internalType: "address",
+            },
+            {
+              name: "score",
+              type: "uint256",
+              indexed: false,
+              internalType: "uint256",
+            },
+          ],
+          anonymous: false,
+        },
+      ],
+      inheritedFunctions: {},
+      deploymentFile: "run-1747219440.json",
+      deploymentScript: "Deploy.s.sol",
+    },
   },
   20143: {
     YourContract: {

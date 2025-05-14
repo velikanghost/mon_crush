@@ -1,8 +1,9 @@
 "use client";
 
-import { FC } from "react";
+import { FC, useState } from "react";
 import Board from "./Board";
 import Stats from "./Stats";
+import { VersusMode } from "./VersusMode";
 import { ChevronRightIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/outline";
 import { GameWalletDetails } from "~~/components/scaffold-eth/GameWalletDetails";
 
@@ -25,6 +26,8 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
   gameWallet,
   user,
 }) => {
+  const [activeTab, setActiveTab] = useState<"solo" | "versus">("solo");
+
   return (
     <div className="flex flex-col w-full h-full">
       {/* Top Row - Game Title and Stats */}
@@ -69,29 +72,56 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
         </div>
       </div>
 
-      {/* Stats Row - Quick Access to Key Stats */}
-      <div className="flex justify-center w-full px-4 mb-4">
-        <Stats
-          handleOpenDrawer={() => {
-            const drawerElement = document.getElementById("wallet-drawer") as HTMLInputElement;
-            if (drawerElement) drawerElement.checked = true;
-          }}
-        />
+      {/* Game Mode Tabs */}
+      <div className="justify-center mb-4 tabs tabs-boxed">
+        <a className={`tab ${activeTab === "solo" ? "tab-active" : ""}`} onClick={() => setActiveTab("solo")}>
+          Solo Mode
+        </a>
+        <a className={`tab ${activeTab === "versus" ? "tab-active" : ""}`} onClick={() => setActiveTab("versus")}>
+          Versus Mode
+        </a>
       </div>
 
-      {/* Game Board - Full Width */}
-      <div className="flex flex-col items-center justify-center flex-grow w-full px-2" onClick={handleBoardClick}>
-        {gameWallet && gameStore.gameBoard ? (
-          <>
-            <Board />
-            <button className="w-full h-10 px-4 mt-8 mb-4 btn btn-primary" onClick={handleResetGame}>
-              Reset
-            </button>
-          </>
-        ) : (
-          <div className="text-xl text-center">Initializing Game Board...</div>
-        )}
-      </div>
+      {activeTab === "solo" ? (
+        <>
+          {/* Stats Row - Quick Access to Key Stats */}
+          <div className="flex justify-center w-full px-4 mb-4">
+            <Stats
+              handleOpenDrawer={() => {
+                const drawerElement = document.getElementById("wallet-drawer") as HTMLInputElement;
+                if (drawerElement) drawerElement.checked = true;
+              }}
+            />
+          </div>
+
+          {/* Game Board - Full Width */}
+          <div className="flex flex-col items-center justify-center flex-grow w-full px-2" onClick={handleBoardClick}>
+            {gameWallet && gameStore.gameBoard ? (
+              <>
+                <Board />
+                <button className="w-full h-10 px-4 mt-8 mb-4 btn btn-primary" onClick={handleResetGame}>
+                  Reset
+                </button>
+              </>
+            ) : (
+              <div className="text-xl text-center">Initializing Game Board...</div>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="flex-grow px-2">
+          <VersusMode user={user} />
+
+          {/* Game Board for Versus Mode */}
+          <div className="flex flex-col items-center justify-center w-full mt-4" onClick={handleBoardClick}>
+            {gameWallet && gameStore.gameBoard ? (
+              <Board />
+            ) : (
+              <div className="text-xl text-center">Initializing Game Board...</div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Wallet and Transaction History Drawer */}
       <div className="drawer drawer-end">

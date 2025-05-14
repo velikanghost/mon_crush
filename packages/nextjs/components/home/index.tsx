@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Footer } from "../Footer";
+import { sdk } from "@farcaster/frame-sdk";
 import toast from "react-hot-toast";
 import { Account, LocalAccount } from "viem";
 import { parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { useAccount, useSendTransaction, useSwitchChain } from "wagmi";
+import { useAccount, useConnect, useSendTransaction, useSwitchChain } from "wagmi";
 import { SwitchTheme } from "~~/components/SwitchTheme";
 import { ConnectFarcasterStep } from "~~/components/home/ConnectFarcasterStep";
 import { FundWalletStep } from "~~/components/home/FundWalletStep";
@@ -26,8 +27,10 @@ export default function Home() {
   const { signIn, isLoading, isSignedIn, user, error } = useSignIn({
     autoSignIn: true,
   });
+
   const { address: connectedAddress, isConnected } = useAccount();
   const { switchChain } = useSwitchChain();
+  const { connect, connectors } = useConnect();
 
   const gameStore = useGameStore();
   const [musicPlaying, setMusicPlaying] = useState(false);
@@ -103,6 +106,12 @@ export default function Home() {
       // Potentially offer recovery or reset options here
       return;
     }
+    try {
+      await switchChain({ chainId: monadTestnet.id });
+    } catch (switchError) {
+      toast.error("Failed to switch to Monad Testnet. Please switch manually.");
+      return;
+    }
 
     try {
       await linkGameWallet({
@@ -113,7 +122,6 @@ export default function Home() {
       setCurrentStep(2); // Move to the game playing step
     } catch (error: any) {
       console.error("Error linking game wallet:", error);
-      toast.error(`Failed to link game wallet: ${error.message || error}`);
     }
   };
 
@@ -126,6 +134,14 @@ export default function Home() {
 
     try {
       toast.loading("Processing deposit...");
+
+      try {
+        await switchChain({ chainId: monadTestnet.id });
+      } catch (switchError) {
+        toast.error("Failed to switch to Monad Testnet. Please switch manually.");
+        return;
+      }
+
       await sendTransactionAsync({
         to: gameWallet.address,
         value: parseEther(depositAmount),
@@ -138,7 +154,7 @@ export default function Home() {
       await handleLinkGameWallet();
     } catch (error: any) {
       toast.dismiss(); // Dismiss loading toast
-      toast.error(`Deposit failed: ${error.message}`);
+      console.error(`Deposit failed: ${error.message}`);
     }
   };
 
@@ -361,6 +377,11 @@ export default function Home() {
 
   // Effect to handle page refresh/load session check
   useEffect(() => {
+    // Check if wallet is connected before proceeding
+    if (!isConnected) {
+      // Try to connect first
+      connect({ connector: connectors[0] });
+    }
     // This effect only runs once on mount to handle page refresh scenarios
     const handlePageRefresh = async () => {
       if (isConnected && connectedAddress && user) {
@@ -390,6 +411,29 @@ export default function Home() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array ensures this runs only once on mount
+
+  // Add this useEffect to automatically request notifications
+  useEffect(() => {
+    const requestNotifications = async () => {
+      try {
+        // Check if user is signed in with Farcaster and game board is loaded
+        if (user?.username && gameStore.isInitialized && gameStore.gameBoard) {
+          // Small delay to ensure UI is fully loaded
+          setTimeout(async () => {
+            const result = await sdk.actions.addFrame();
+            if (result && result.notificationDetails) {
+              console.log("Notifications enabled automatically");
+              console.log(result.notificationDetails);
+            }
+          }, 1000);
+        }
+      } catch (error) {
+        console.error("Failed to request notifications:", error);
+      }
+    };
+
+    requestNotifications();
+  }, [user?.username, gameStore.isInitialized, gameStore.gameBoard]);
 
   // Render the appropriate step based on currentStep value
   const renderStepContent = () => {
