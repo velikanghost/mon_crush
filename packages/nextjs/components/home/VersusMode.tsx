@@ -43,7 +43,26 @@ export const VersusMode = ({ user }: { user: any }) => {
   const [hasSubmittedScore, setHasSubmittedScore] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
 
-  // Contract interactions
+  // Contract read hooks
+  const { data: playerActiveGames } = useScaffoldReadContract({
+    contractName: "GameEscrow",
+    functionName: "getPlayerActiveGames",
+    args: [address],
+  });
+
+  const { data: activeGameScores, refetch: refetchScores } = useScaffoldReadContract({
+    contractName: "GameEscrow",
+    functionName: "getGameScores",
+    args: [(activeGameId as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000"],
+  });
+
+  const { data: gameDetails, refetch: refetchGameDetails } = useScaffoldReadContract({
+    contractName: "GameEscrow",
+    functionName: "getGameDetails",
+    args: [(activeGameId as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000"],
+  });
+
+  // Contract write hooks
   const { writeContractAsync: createVersusGame } = useScaffoldWriteContract({
     contractName: "GameEscrow",
   });
@@ -62,20 +81,6 @@ export const VersusMode = ({ user }: { user: any }) => {
 
   const { writeContractAsync: submitGameScore } = useScaffoldWriteContract({
     contractName: "GameEscrow",
-  });
-
-  // Read contract data
-  const { data: playerActiveGames } = useScaffoldReadContract({
-    contractName: "GameEscrow",
-    functionName: "getPlayerActiveGames",
-    args: [address],
-  });
-
-  // Get game scores
-  const { data: activeGameScores, refetch: refetchScores } = useScaffoldReadContract({
-    contractName: "GameEscrow",
-    functionName: "getGameScores",
-    args: [(activeGameId as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000"],
   });
 
   // Fetch Farcaster FID by username
@@ -105,11 +110,9 @@ export const VersusMode = ({ user }: { user: any }) => {
   // Fetch game details for an active game
   const fetchGameDetails = async (gameId: string) => {
     try {
-      const { data: gameDetails } = await useScaffoldReadContract({
-        contractName: "GameEscrow",
-        functionName: "getGameDetails",
-        args: [gameId as `0x${string}`],
-      });
+      // Update the activeGameId which will trigger the gameDetails hook
+      setActiveGameId(gameId);
+      await refetchGameDetails?.();
       return gameDetails;
     } catch (error) {
       console.error("Error fetching game details:", error);
@@ -329,19 +332,21 @@ export const VersusMode = ({ user }: { user: any }) => {
       const pending: { id: string; details: VersusGame }[] = [];
 
       for (const gameId of playerActiveGames) {
-        const details = await fetchGameDetails(gameId);
-        if (!details) continue;
+        setActiveGameId(gameId);
+        await refetchGameDetails?.();
 
-        if (details.isActive) {
-          active.push({ id: gameId, details });
+        if (!gameDetails) continue;
+
+        if (gameDetails.isActive) {
+          active.push({ id: gameId, details: gameDetails as VersusGame });
           // If we're in an active game, set it as the current game
-          if (details.player1 === address || details.player2 === address) {
+          if (gameDetails.player1 === address || gameDetails.player2 === address) {
             setActiveGameId(gameId);
 
             // Check if we've already submitted our score
             if (
-              (details.player1 === address && details.player1ScoreSubmitted) ||
-              (details.player2 === address && details.player2ScoreSubmitted)
+              (gameDetails.player1 === address && gameDetails.player1ScoreSubmitted) ||
+              (gameDetails.player2 === address && gameDetails.player2ScoreSubmitted)
             ) {
               setHasSubmittedScore(true);
             } else {
@@ -349,11 +354,11 @@ export const VersusMode = ({ user }: { user: any }) => {
             }
           }
         } else if (
-          details.player2 === "0x0000000000000000000000000000000000000000" &&
-          details.player2FarcasterName === user?.username
+          gameDetails.player2 === "0x0000000000000000000000000000000000000000" &&
+          gameDetails.player2FarcasterName === user?.username
         ) {
           // This is an invite for the current user
-          pending.push({ id: gameId, details });
+          pending.push({ id: gameId, details: gameDetails as VersusGame });
         }
       }
 
@@ -362,7 +367,7 @@ export const VersusMode = ({ user }: { user: any }) => {
     };
 
     loadGames();
-  }, [address, playerActiveGames, user]);
+  }, [address, playerActiveGames, user, gameDetails, refetchGameDetails]);
 
   // Countdown timer for active game
   useEffect(() => {
