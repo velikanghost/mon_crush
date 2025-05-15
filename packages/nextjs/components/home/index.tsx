@@ -420,15 +420,28 @@ export default function Home() {
         if (user?.username && gameStore.isInitialized && gameStore.gameBoard) {
           // Small delay to ensure UI is fully loaded
           setTimeout(async () => {
+            console.log("Attempting to add frame and request notifications...");
             const result = await sdk.actions.addFrame();
-            if (result && result.notificationDetails) {
-              console.log("Notifications enabled automatically");
-              console.log(result.notificationDetails);
+
+            if (result) {
+              console.log("Frame added successfully!");
+              if (result.notificationDetails) {
+                console.log("Notifications enabled successfully!");
+                console.log("Notification details:", result.notificationDetails);
+                // No need to save the token, Neynar handles this automatically
+                toast.success("Notifications enabled for game updates!");
+              } else {
+                console.log("Frame added but notifications not enabled");
+              }
+            } else {
+              console.log("Frame not added, reason:", result);
+              toast.error("Failed to enable notifications: " + result);
             }
           }, 1000);
         }
       } catch (error) {
         console.error("Failed to request notifications:", error);
+        toast.error("Failed to enable notifications. Please try again later.");
       }
     };
 

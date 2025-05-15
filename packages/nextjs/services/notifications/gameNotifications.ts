@@ -11,6 +11,9 @@ async function sendNotification(
   },
 ) {
   try {
+    console.log(`Sending notification to FIDs: ${targetFids.join(", ")}`);
+    console.log(`Notification content:`, notification);
+
     const response = await fetch("/api/notifications", {
       method: "POST",
       headers: {
@@ -28,7 +31,9 @@ async function sendNotification(
       return { success: false, error: errorData };
     }
 
-    return await response.json();
+    const responseData = await response.json();
+    console.log("Notification send response:", responseData);
+    return responseData;
   } catch (error) {
     console.error("Failed to send notification:", error);
     return { success: false, error };
@@ -36,6 +41,7 @@ async function sendNotification(
 }
 
 export async function notifyGameInvitation(targetFid: number, senderUsername: string, wagerAmount: string) {
+  console.log(`Sending game invitation to FID ${targetFid} from ${senderUsername}`);
   return await sendNotification([targetFid], {
     title: "New Game Challenge!",
     body: `${senderUsername} has challenged you to a game with ${wagerAmount} MON at stake!`,

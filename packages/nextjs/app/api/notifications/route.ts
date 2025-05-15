@@ -15,10 +15,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing targetFids or notification" }, { status: 400 });
     }
 
+    console.log(`Sending notification to FIDs: ${targetFids.join(", ")}`);
+    console.log(`Notification content: ${JSON.stringify(notification)}`);
+
     const result = await neynarClient.publishFrameNotifications({
       targetFids,
       notification,
     });
+
+    console.log("Neynar notification response:", JSON.stringify(result));
 
     return NextResponse.json({ success: true, result }, { status: 200 });
   } catch (error) {
