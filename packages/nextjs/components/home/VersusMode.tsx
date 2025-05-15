@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { parseEther } from "viem";
 import { useAccount } from "wagmi";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
+import { fetchUserByUsername } from "~~/lib/neynar";
 import {
   notifyGameEnding,
   notifyGameInvitation,
@@ -83,30 +84,6 @@ export const VersusMode = ({ user }: { user: any }) => {
     contractName: "GameEscrow",
   });
 
-  // Fetch Farcaster FID by username
-  const fetchFidByUsername = async (username: string): Promise<number | null> => {
-    try {
-      // You'll need to set up a NEYNAR_API_KEY in your environment variables
-      const response = await fetch(`https://api.neynar.com/v2/farcaster/user-by-username?username=${username}`, {
-        headers: { api_key: process.env.NEXT_PUBLIC_NEYNAR_API_KEY || "" },
-      });
-      const data = await response.json();
-      return data.user?.fid || null;
-    } catch (error) {
-      console.error("Error fetching FID:", error);
-      return null;
-    }
-  };
-
-  // Update opponentFid when opponentName changes
-  useEffect(() => {
-    if (opponentName) {
-      fetchFidByUsername(opponentName).then(fid => setOpponentFid(fid));
-    } else {
-      setOpponentFid(null);
-    }
-  }, [opponentName]);
-
   // Fetch game details for an active game
   const fetchGameDetails = async (gameId: string) => {
     try {
@@ -139,6 +116,11 @@ export const VersusMode = ({ user }: { user: any }) => {
 
     try {
       setIsLoading(true);
+
+      console.log("opponentName", opponentName);
+      const opponentFid = await fetchUserByUsername(opponentName);
+      console.log("opponent", opponentFid);
+
       const wagerInWei = parseEther(wagerAmount);
 
       await createVersusGame({
@@ -147,13 +129,13 @@ export const VersusMode = ({ user }: { user: any }) => {
         value: wagerInWei,
       });
 
-      toast.success(`Game invitation sent to ${opponentName}!`);
-      setOpponentName("");
-
       // Send notification to the challenged player
       if (opponentFid) {
+        console.log("opponentFid", opponentFid);
         try {
-          await notifyGameInvitation(opponentFid, user.username, wagerAmount);
+          await notifyGameInvitation(Number(opponentFid.fid), user.username, wagerAmount);
+          toast.success(`Game invitation sent to ${opponentName}!`);
+          setOpponentName("");
         } catch (notifError) {
           console.error("Failed to send notification:", notifError);
           // Don't show error to user as the game was created successfully
@@ -193,10 +175,10 @@ export const VersusMode = ({ user }: { user: any }) => {
 
       // Notify the opponent that the game has started
       const opponentUsername = gameDetails.player1FarcasterName;
-      const creatorFid = await fetchFidByUsername(opponentUsername);
+      const creatorFid = await fetchUserByUsername(opponentUsername);
       if (creatorFid) {
         try {
-          await notifyGameStarted(creatorFid, user.username);
+          await notifyGameStarted(Number(creatorFid.fid), user.username);
         } catch (notifError) {
           console.error("Failed to send game start notification:", notifError);
         }
@@ -261,8 +243,8 @@ export const VersusMode = ({ user }: { user: any }) => {
       setGameEnded(true);
 
       // Get FIDs for both players
-      const player1Fid = await fetchFidByUsername(gameDetails.player1FarcasterName);
-      const player2Fid = await fetchFidByUsername(gameDetails.player2FarcasterName);
+      const player1Fid = await fetchUserByUsername(gameDetails.player1FarcasterName);
+      const player2Fid = await fetchUserByUsername(gameDetails.player2FarcasterName);
 
       const prize = ((Number(gameDetails.wagerAmount) * 2) / 1e18).toString();
 
@@ -281,21 +263,16 @@ export const VersusMode = ({ user }: { user: any }) => {
       if (player1Fid && player2Fid) {
         if ((isPlayer1 && player1Score > player2Score) || (!isPlayer1 && player2Score > player1Score)) {
           // Current user won
-          await notifyGameResult(isPlayer1 ? player1Fid : player2Fid, true, myScore, prize);
-          await notifyGameResult(isPlayer1 ? player2Fid : player1Fid, false, isPlayer1 ? player2Score : player1Score);
+          await notifyGameResult(Number(player1Fid.fid), true, myScore, prize);
+          await notifyGameResult(Number(player2Fid.fid), false, isPlayer1 ? player2Score : player1Score);
         } else if ((isPlayer1 && player1Score < player2Score) || (!isPlayer1 && player2Score < player1Score)) {
           // Opponent won
-          await notifyGameResult(
-            isPlayer1 ? player2Fid : player1Fid,
-            true,
-            isPlayer1 ? player2Score : player1Score,
-            prize,
-          );
-          await notifyGameResult(isPlayer1 ? player1Fid : player2Fid, false, myScore);
+          await notifyGameResult(Number(player2Fid.fid), true, isPlayer1 ? player2Score : player1Score, prize);
+          await notifyGameResult(Number(player1Fid.fid), false, myScore);
         } else {
           // It's a tie
-          await notifyGameResult(player1Fid, false, player1Score, prize + " (split)");
-          await notifyGameResult(player2Fid, false, player2Score, prize + " (split)");
+          await notifyGameResult(Number(player1Fid.fid), false, player1Score, prize + " (split)");
+          await notifyGameResult(Number(player2Fid.fid), false, player2Score, prize + " (split)");
         }
       }
     } catch (error: any) {
@@ -395,8 +372,8 @@ export const VersusMode = ({ user }: { user: any }) => {
             ? activeGame.details.player2FarcasterName
             : activeGame.details.player1FarcasterName;
 
-          fetchFidByUsername(opponentName).then(fid => {
-            if (fid) notifyGameEnding(fid, 0.5);
+          fetchUserByUsername(opponentName).then(user => {
+            if (user) notifyGameEnding(Number(user.fid), 0.5);
           });
         } catch (error) {
           console.error("Failed to send ending notification:", error);
