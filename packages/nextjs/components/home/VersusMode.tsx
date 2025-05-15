@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { parseEther } from "viem";
-import { useAccount } from "wagmi";
+import { useAccount, useConnect } from "wagmi";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { fetchUserByUsername } from "~~/lib/neynar";
 import {
@@ -29,7 +29,8 @@ interface VersusGame {
 }
 
 export const VersusMode = ({ user }: { user: any }) => {
-  const { address } = useAccount();
+  const { address, isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
   const gameStore = useGameStore();
 
   // State for creating a game
@@ -43,6 +44,9 @@ export const VersusMode = ({ user }: { user: any }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSubmittedScore, setHasSubmittedScore] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
+
+  // Add connection loading state
+  const [isConnecting, setIsConnecting] = useState(false);
 
   // Contract read hooks
   const { data: playerActiveGames } = useScaffoldReadContract({
@@ -84,6 +88,24 @@ export const VersusMode = ({ user }: { user: any }) => {
     contractName: "GameEscrow",
   });
 
+  // Ensure wallet is connected
+  useEffect(() => {
+    const connectWallet = async () => {
+      if (!isConnected && !isConnecting) {
+        setIsConnecting(true);
+        try {
+          await connect({ connector: connectors[0] });
+        } catch (error) {
+          console.error("Failed to connect wallet:", error);
+          toast.error("Failed to connect wallet. Please try again.");
+        } finally {
+          setIsConnecting(false);
+        }
+      }
+    };
+    connectWallet();
+  }, [isConnected, connect, connectors, isConnecting]);
+
   // Fetch game details for an active game
   const fetchGameDetails = async (gameId: string) => {
     try {
@@ -97,10 +119,15 @@ export const VersusMode = ({ user }: { user: any }) => {
     }
   };
 
-  // Create a new versus game
+  // Handle create game with connection check
   const handleCreateGame = async () => {
     if (!user?.username) {
       toast.error("You need to be connected with Farcaster to create a versus game");
+      return;
+    }
+
+    if (!isConnected) {
+      toast.error("Please wait while connecting your wallet...");
       return;
     }
 
@@ -117,10 +144,7 @@ export const VersusMode = ({ user }: { user: any }) => {
     try {
       setIsLoading(true);
 
-      console.log("opponentName", opponentName);
       const opponentFid = await fetchUserByUsername(opponentName);
-      console.log("opponent", opponentFid);
-
       const wagerInWei = parseEther(wagerAmount);
 
       await createVersusGame({
@@ -138,7 +162,6 @@ export const VersusMode = ({ user }: { user: any }) => {
           setOpponentName("");
         } catch (notifError) {
           console.error("Failed to send notification:", notifError);
-          // Don't show error to user as the game was created successfully
         }
       }
     } catch (error: any) {
@@ -408,9 +431,18 @@ export const VersusMode = ({ user }: { user: any }) => {
     <div className="p-4 rounded-lg shadow-lg bg-base-100">
       <h2 className="mb-4 text-xl font-bold">Versus Mode</h2>
 
-      {!user?.username ? (
+      {isConnecting ? (
+        <div className="py-8 text-center">
+          <span className="loading loading-spinner"></span>
+          <p className="mt-2">Connecting wallet...</p>
+        </div>
+      ) : !user?.username ? (
         <div className="py-8 text-center">
           <p className="text-lg">Connect with Farcaster to play Versus Mode</p>
+        </div>
+      ) : !isConnected ? (
+        <div className="py-8 text-center">
+          <p className="text-lg">Failed to connect wallet. Please refresh the page.</p>
         </div>
       ) : activeGameId ? (
         <div className="versus-active-game">
