@@ -113,13 +113,13 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
           <VersusMode user={user} />
 
           {/* Game Board for Versus Mode */}
-          <div className="flex flex-col items-center justify-center w-full mt-4" onClick={handleBoardClick}>
+          {/* <div className="flex flex-col items-center justify-center w-full mt-4" onClick={handleBoardClick}>
             {gameWallet && gameStore.gameBoard ? (
               <Board />
             ) : (
               <div className="text-xl text-center">Initializing Game Board...</div>
             )}
-          </div>
+          </div> */}
         </div>
       )}
 
