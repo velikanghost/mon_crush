@@ -4,15 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Footer } from "../Footer";
 import { sdk } from "@farcaster/frame-sdk";
 import toast from "react-hot-toast";
-import { Account, LocalAccount } from "viem";
+import { LocalAccount } from "viem";
 import { parseEther } from "viem";
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { useAccount, useConnect, useSendTransaction, useSwitchChain } from "wagmi";
-import { SwitchTheme } from "~~/components/SwitchTheme";
+import { useAccount, useChains, useConnect, useSendTransaction, useSwitchChain } from "wagmi";
 import { ConnectFarcasterStep } from "~~/components/home/ConnectFarcasterStep";
 import { FundWalletStep } from "~~/components/home/FundWalletStep";
 import { GameBoardStep } from "~~/components/home/GameBoardStep";
-import { GenerateWalletStep } from "~~/components/home/GenerateWalletStep";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { useSignIn } from "~~/hooks/use-sign-in";
 import { monadTestnet } from "~~/scaffold.config";
@@ -20,7 +17,7 @@ import { initGameAudio, startBackgroundMusic, toggleBackgroundMusic } from "~~/s
 import { clearTxHashesFromDB } from "~~/services/indexeddb/transactionDB";
 import { initMatchSound } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
-import { decryptData, deriveEncryptionKey, encryptData } from "~~/services/utils/crypto";
+import { decryptData, deriveEncryptionKey } from "~~/services/utils/crypto";
 import { clearUserSession, extendUserSession, getUserSession } from "~~/services/utils/sessionStorage";
 
 export default function Home() {
@@ -29,6 +26,7 @@ export default function Home() {
   });
 
   const { address: connectedAddress, isConnected } = useAccount();
+  const chains = useChains();
   const { switchChain } = useSwitchChain();
   const { connect, connectors } = useConnect();
 
@@ -136,7 +134,8 @@ export default function Home() {
       toast.loading("Processing deposit...");
 
       try {
-        await switchChain({ chainId: monadTestnet.id });
+        const res = switchChain({ chainId: monadTestnet.id });
+        console.log("res switchChain", res);
       } catch (switchError) {
         toast.error("Failed to switch to Monad Testnet. Please switch manually.");
         return;
@@ -157,53 +156,6 @@ export default function Home() {
       console.error(`Deposit failed: ${error.message}`);
     }
   };
-
-  // Fix the Farcaster authentication and step transitions
-  // useEffect(() => {
-  //   // Handle Farcaster sign-in completion
-  //   // if (isSignedIn && user && currentStep === 0) {
-  //   //   // Check for existing wallet data immediately after sign-in
-  //   //   const userIdentifier = user ? `${user.fid}_${connectedAddress || ""}` : connectedAddress || "farcaster-user";
-  //   //   const savedWalletData = localStorage.getItem(`gameWallet_${userIdentifier}`);
-  //   //   if (savedWalletData) {
-  //   //     try {
-  //   //       const key = deriveEncryptionKey(user.fid.toString());
-  //   //       const privateKey = decryptData(savedWalletData, key);
-  //   //       const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
-  //   //       const account = privateKeyToAccount(formattedPrivateKey as `0x${string}`);
-
-  //   //       setGameWallet(account);
-  //   //       gameStore.setGameWalletPrivateKey(formattedPrivateKey);
-  //   //       gameStore.setGameWalletAddress(account.address);
-
-  //   //       setCurrentStep(3); // Skip directly to game
-  //   //       toast.success("Existing game wallet restored! Skipping to game.");
-  //   //       return;
-  //   //     } catch (error) {
-  //   //       console.error("Failed to restore wallet after sign-in:", error);
-  //   //       // If error, remove corrupted wallet and continue to step 2
-  //   //       localStorage.removeItem(`gameWallet_${userIdentifier}`);
-  //   //     }
-  //   //   }
-  //   //   // If no wallet, proceed to step 2 (generate wallet)
-  //   //   setCurrentStep(1);
-  //   //   toast.success(
-  //   //     `Welcome, ${user.display_name || user.username || "Farcaster user"}! Please generate a game wallet.`,
-  //   //   );
-  //   // }
-
-  //   console.log("isSignedIn", isSignedIn);
-  //   console.log("user", user);
-  //   console.log("currentStep", currentStep);
-  //   console.log("connectedAddress", connectedAddress);
-  // }, [
-  //   isSignedIn,
-  //   user,
-  //   currentStep,
-  //   connectedAddress,
-  //   gameStore.setGameWalletPrivateKey,
-  //   gameStore.setGameWalletAddress,
-  // ]);
 
   // Initialize game when component mounts and Farcaster user is connected
   useEffect(() => {
@@ -382,6 +334,8 @@ export default function Home() {
       // Try to connect first
       connect({ connector: connectors[0] });
     }
+    console.log("isConnected", isConnected);
+    console.log("chain", chains);
     // This effect only runs once on mount to handle page refresh scenarios
     const handlePageRefresh = async () => {
       if (isConnected && connectedAddress && user) {

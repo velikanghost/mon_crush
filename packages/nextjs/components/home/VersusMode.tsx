@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { createPublicClient, http, parseEther } from "viem";
-import { useAccount, useConnect, useReadContract, useSwitchChain } from "wagmi";
-import deployedContracts from "~~/contracts/deployedContracts";
+import { parseEther } from "viem";
+import { useAccount, useConnect, useSwitchChain } from "wagmi";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { fetchUserByUsername } from "~~/lib/neynar";
 import { monadTestnet } from "~~/scaffold.config";
@@ -40,9 +39,7 @@ export const VersusMode = ({ user }: { user: any }) => {
   const [opponentName, setOpponentName] = useState("");
   const [opponentFid, setOpponentFid] = useState<number | null>(null);
   const [wagerAmount, setWagerAmount] = useState("0.01");
-  //const [activeGames, setActiveGames] = useState<{ id: string; details: VersusGame }[]>([]);
   const [pendingInvites, setPendingInvites] = useState<{ id: string; details: VersusGame }[]>([]);
-  //const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSubmittedScore, setHasSubmittedScore] = useState(false);
@@ -91,16 +88,6 @@ export const VersusMode = ({ user }: { user: any }) => {
     },
   });
 
-  //   const { data: gameDetails } = useReadContract({
-  //     address: deployedContracts[10143].GameEscrow.address,
-  //     abi: deployedContracts[10143].GameEscrow.abi,
-  //     functionName: "getGameDetails",
-  //     args: [myGameId as `0x${string}`],
-  //     query: {
-  //       enabled: !!myGameId,
-  //     },
-  //   });
-
   useEffect(() => {
     console.log("gameDetails", gameDetails);
   }, [gameDetails]);
@@ -125,6 +112,23 @@ export const VersusMode = ({ user }: { user: any }) => {
   const { writeContractAsync: submitGameScore } = useScaffoldWriteContract({
     contractName: "GameEscrow",
   });
+
+  useEffect(() => {
+    // Check if wallet is connected before proceeding
+    if (!isConnected) {
+      // Try to connect first
+      connect({ connector: connectors[0] });
+      const switchToMonadTestnet = async () => {
+        try {
+          await switchChain({ chainId: monadTestnet.id });
+        } catch (error) {
+          toast.error("Failed to switch to Monad Testnet. Please try again.");
+        }
+      };
+
+      switchToMonadTestnet();
+    }
+  }, []);
 
   // Handle create game with connection check
   const handleCreateGame = async () => {
@@ -199,19 +203,15 @@ export const VersusMode = ({ user }: { user: any }) => {
     try {
       setIsLoading(true);
 
-      switchChain({ chainId: monadTestnet.id });
+      const switchToMonadTestnet = async () => {
+        try {
+          await switchChain({ chainId: monadTestnet.id });
+        } catch (error) {
+          toast.error("Failed to switch to Monad Testnet. Please try again.");
+        }
+      };
 
-      //   //refetchGameDetails?.();
-      //   const publicClient = createPublicClient({
-      //     chain: monadTestnet,
-      //     transport: http(monadTestnet.rpcUrls.default.http[0]),
-      //   });
-      //   const gameDetails = await publicClient.readContract({
-      //     address: deployedContracts[10143].GameEscrow.address,
-      //     abi: deployedContracts[10143].GameEscrow.abi,
-      //     functionName: "getGameDetails",
-      //     args: [(myGameId as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000"],
-      //   });
+      switchToMonadTestnet();
 
       console.log("gameDetails", gameDetails);
 
@@ -362,68 +362,12 @@ export const VersusMode = ({ user }: { user: any }) => {
     }
   };
 
-  // Load active games and invites
-  //   useEffect(() => {
-  //     const loadGames = async () => {
-  //       if (!address || !playerActiveGames) return;
-
-  //       const active: { id: string; details: VersusGame }[] = [];
-  //       const pending: { id: string; details: VersusGame }[] = [];
-
-  //       for (const gameId of playerActiveGames) {
-  //         setMyGameId(gameId);
-  //         await refetchGameDetails?.();
-
-  //         if (!gameDetails) continue;
-
-  //         if (gameDetails.isActive) {
-  //           active.push({ id: gameId, details: gameDetails as VersusGame });
-  //           // If we're in an active game, set it as the current game
-  //           if (gameDetails.player1 === address || gameDetails.player2 === address) {
-  //             setMyGameId(gameId);
-
-  //             // Check if we've already submitted our score
-  //             if (
-  //               (gameDetails.player1 === address && gameDetails.player1ScoreSubmitted) ||
-  //               (gameDetails.player2 === address && gameDetails.player2ScoreSubmitted)
-  //             ) {
-  //               setHasSubmittedScore(true);
-  //             } else {
-  //               setHasSubmittedScore(false);
-  //             }
-  //           }
-  //         } else if (
-  //           gameDetails.player2 === "0x0000000000000000000000000000000000000000" &&
-  //           gameDetails.player2FarcasterName === user?.username
-  //         ) {
-  //           // This is an invite for the current user
-  //           pending.push({ id: gameId, details: gameDetails as VersusGame });
-  //         } else if (
-  //           gameDetails.player1 === address &&
-  //           gameDetails.player2 === "0x0000000000000000000000000000000000000000"
-  //         ) {
-  //           // This is a game we created that is waiting for opponent
-  //           setWaitingForOpponent(true);
-  //           setWaitingGameId(gameId);
-  //         }
-  //       }
-
-  //       setActiveGames(active);
-  //       setPendingInvites(pending);
-  //     };
-
-  //     loadGames();
-  //   }, [address, playerActiveGames, user, gameDetails, refetchGameDetails]);
-
   // Countdown timer for active game
   useEffect(() => {
     if (!myGameId) {
       setCountdown(null);
       return;
     }
-
-    // const activeGame = activeGames.find(game => game.id === myGameId);
-    // if (!activeGame) return;
 
     const updateCountdown = () => {
       const now = Math.floor(Date.now() / 1000);
