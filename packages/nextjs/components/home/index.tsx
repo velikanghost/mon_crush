@@ -414,39 +414,30 @@ export default function Home() {
 
   // Add this useEffect to automatically request notifications
   useEffect(() => {
-    const requestNotifications = async () => {
-      try {
-        // Check if user is signed in with Farcaster and game board is loaded
-        if (user?.username && gameStore.isInitialized && gameStore.gameBoard) {
-          // Small delay to ensure UI is fully loaded
-          setTimeout(async () => {
-            console.log("Attempting to add frame and request notifications...");
-            const result = await sdk.actions.addFrame();
+    // Track if we've already requested notifications
+    const hasRequestedNotifications = localStorage.getItem(`notifications_requested_${user?.fid}`);
 
-            if (result) {
-              console.log("Frame added successfully!");
-              if (result.notificationDetails) {
-                console.log("Notifications enabled successfully!");
-                console.log("Notification details:", result.notificationDetails);
-                // No need to save the token, Neynar handles this automatically
-                toast.success("Notifications enabled for game updates!");
-              } else {
-                console.log("Frame added but notifications not enabled");
-              }
-            } else {
-              console.log("Frame not added, reason:", result);
-              toast.error("Failed to enable notifications: " + result);
-            }
-          }, 1000);
+    const requestNotifications = async () => {
+      if (hasRequestedNotifications) return;
+
+      try {
+        if (user?.username) {
+          console.log("Attempting to add frame and request notifications...");
+          const result = await sdk.actions.addFrame();
+
+          if (result?.notificationDetails) {
+            console.log("Notifications enabled successfully!");
+            localStorage.setItem(`notifications_requested_${user?.fid}`, "true");
+            toast.success("Notifications enabled for game updates!");
+          }
         }
       } catch (error) {
         console.error("Failed to request notifications:", error);
-        toast.error("Failed to enable notifications. Please try again later.");
       }
     };
 
     requestNotifications();
-  }, [user?.username, gameStore.isInitialized, gameStore.gameBoard]);
+  }, [user?.username, user?.fid]); // Only depends on user identity
 
   // Render the appropriate step based on currentStep value
   const renderStepContent = () => {

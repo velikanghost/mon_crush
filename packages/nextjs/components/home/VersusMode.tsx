@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { parseEther } from "viem";
-import { useAccount, useConnect } from "wagmi";
+import { createPublicClient, http, parseEther } from "viem";
+import { useAccount, useConnect, useReadContract, useSwitchChain } from "wagmi";
+import deployedContracts from "~~/contracts/deployedContracts";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { fetchUserByUsername } from "~~/lib/neynar";
+import { monadTestnet } from "~~/scaffold.config";
 import {
   notifyGameEnding,
   notifyGameInvitation,
@@ -31,15 +33,16 @@ interface VersusGame {
 export const VersusMode = ({ user }: { user: any }) => {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
+  const { switchChain } = useSwitchChain();
   const gameStore = useGameStore();
 
   // State for creating a game
   const [opponentName, setOpponentName] = useState("");
   const [opponentFid, setOpponentFid] = useState<number | null>(null);
   const [wagerAmount, setWagerAmount] = useState("0.01");
-  const [activeGames, setActiveGames] = useState<{ id: string; details: VersusGame }[]>([]);
+  //const [activeGames, setActiveGames] = useState<{ id: string; details: VersusGame }[]>([]);
   const [pendingInvites, setPendingInvites] = useState<{ id: string; details: VersusGame }[]>([]);
-  const [activeGameId, setActiveGameId] = useState<string | null>(null);
+  //const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSubmittedScore, setHasSubmittedScore] = useState(false);
@@ -47,11 +50,24 @@ export const VersusMode = ({ user }: { user: any }) => {
 
   // New state for waiting screen and challenge ID
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
-  const [waitingGameId, setWaitingGameId] = useState<string | null>(null);
-  const [manualGameId, setManualGameId] = useState("");
+  //const [waitingGameId, setWaitingGameId] = useState<string | null>(null);
+  const [myGameId, setMyGameId] = useState("");
 
   // Add connection loading state
   const [isConnecting, setIsConnecting] = useState(false);
+
+  // Parse gameId from URL on component mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const gameIdParam = params.get("gameId");
+
+      if (gameIdParam) {
+        setMyGameId(gameIdParam);
+        // Auto-focus the versus tab (handled by parent component via tab parameter)
+      }
+    }
+  }, []);
 
   // Contract read hooks
   const { data: playerActiveGames } = useScaffoldReadContract({
@@ -63,14 +79,31 @@ export const VersusMode = ({ user }: { user: any }) => {
   const { data: activeGameScores, refetch: refetchScores } = useScaffoldReadContract({
     contractName: "GameEscrow",
     functionName: "getGameScores",
-    args: [(activeGameId as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000"],
+    args: [(myGameId as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000"],
   });
 
   const { data: gameDetails, refetch: refetchGameDetails } = useScaffoldReadContract({
     contractName: "GameEscrow",
     functionName: "getGameDetails",
-    args: [(activeGameId as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000"],
+    args: [myGameId as `0x${string}`],
+    query: {
+      enabled: !!myGameId,
+    },
   });
+
+  //   const { data: gameDetails } = useReadContract({
+  //     address: deployedContracts[10143].GameEscrow.address,
+  //     abi: deployedContracts[10143].GameEscrow.abi,
+  //     functionName: "getGameDetails",
+  //     args: [myGameId as `0x${string}`],
+  //     query: {
+  //       enabled: !!myGameId,
+  //     },
+  //   });
+
+  useEffect(() => {
+    console.log("gameDetails", gameDetails);
+  }, [gameDetails]);
 
   // Contract write hooks
   const { writeContractAsync: createVersusGame } = useScaffoldWriteContract({
@@ -92,50 +125,6 @@ export const VersusMode = ({ user }: { user: any }) => {
   const { writeContractAsync: submitGameScore } = useScaffoldWriteContract({
     contractName: "GameEscrow",
   });
-
-  // Parse gameId from URL on component mount
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const gameIdParam = params.get("gameId");
-
-      if (gameIdParam) {
-        setManualGameId(gameIdParam);
-        // Auto-focus the versus tab (handled by parent component via tab parameter)
-      }
-    }
-  }, []);
-
-  // Ensure wallet is connected
-  useEffect(() => {
-    const connectWallet = async () => {
-      if (!isConnected && !isConnecting) {
-        setIsConnecting(true);
-        try {
-          await connect({ connector: connectors[0] });
-        } catch (error) {
-          console.error("Failed to connect wallet:", error);
-          toast.error("Failed to connect wallet. Please try again.");
-        } finally {
-          setIsConnecting(false);
-        }
-      }
-    };
-    connectWallet();
-  }, [isConnected, connect, connectors, isConnecting]);
-
-  // Fetch game details for an active game
-  const fetchGameDetails = async (gameId: string) => {
-    try {
-      // Update the activeGameId which will trigger the gameDetails hook
-      setActiveGameId(gameId);
-      await refetchGameDetails?.();
-      return gameDetails;
-    } catch (error) {
-      console.error("Error fetching game details:", error);
-      return null;
-    }
-  };
 
   // Handle create game with connection check
   const handleCreateGame = async () => {
@@ -163,42 +152,38 @@ export const VersusMode = ({ user }: { user: any }) => {
       setIsLoading(true);
 
       const opponentFid = await fetchUserByUsername(opponentName);
-      const wagerInWei = parseEther(wagerAmount);
+      // Send notification to the challenged player with the game ID
+      if (opponentFid) {
+        const wagerInWei = parseEther(wagerAmount);
 
-      const tx = await createVersusGame({
-        functionName: "createGame",
-        args: [opponentName, user.username],
-        value: wagerInWei,
-      });
+        await createVersusGame(
+          {
+            functionName: "createGame",
+            args: [opponentName, user.username],
+            value: wagerInWei,
+          },
+          {
+            onBlockConfirmation: async txnReceipt => {
+              setWaitingForOpponent(true);
+              const gameId = txnReceipt.logs[0].topics[1];
+              //localStorage.setItem("myGameId", gameId!);
+              //console.log(txnReceipt);
 
-      // Get the game ID from the transaction receipt logs
-      // For simplicity, we're assuming the first game created in this transaction is the one we want
-      // In a more robust implementation, you would parse the logs to get the exact gameId
-      const receipt = tx;
-      console.log("Game creation receipt:", receipt);
-
-      // Set waiting for opponent state
-      setWaitingForOpponent(true);
-
-      // Try to get the game ID from the player's active games
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for blockchain to update
-
-      if (playerActiveGames && playerActiveGames.length > 0) {
-        // Get the most recently created game (should be the one we just created)
-        const createdGameId = playerActiveGames[playerActiveGames.length - 1];
-        setWaitingGameId(createdGameId);
-
-        // Send notification to the challenged player with the game ID
-        if (opponentFid) {
-          console.log("opponentFid", opponentFid);
-          try {
-            await notifyGameInvitation(Number(opponentFid.fid), user.username, wagerAmount, createdGameId);
-            toast.success(`Game invitation sent to ${opponentName}!`);
-            setOpponentName("");
-          } catch (notifError) {
-            console.error("Failed to send notification:", notifError);
-          }
-        }
+              try {
+                await notifyGameInvitation(
+                  Number(opponentFid.fid),
+                  user.username,
+                  wagerAmount,
+                  gameId as `0x${string}`,
+                );
+                toast.success(`Game invitation sent to ${opponentName}!`);
+                setOpponentName("");
+              } catch (notifError) {
+                console.error("Failed to send notification:", notifError);
+              }
+            },
+          },
+        );
       }
     } catch (error: any) {
       console.error("Error creating game:", error);
@@ -210,26 +195,41 @@ export const VersusMode = ({ user }: { user: any }) => {
   };
 
   // Join an existing game
-  const handleJoinGame = async (gameId: string) => {
+  const handleJoinGame = async (id: string) => {
     try {
       setIsLoading(true);
 
-      // Get game details to determine wager amount
-      const gameDetails = pendingInvites.find(game => game.id === gameId)?.details;
+      switchChain({ chainId: monadTestnet.id });
+
+      //   //refetchGameDetails?.();
+      //   const publicClient = createPublicClient({
+      //     chain: monadTestnet,
+      //     transport: http(monadTestnet.rpcUrls.default.http[0]),
+      //   });
+      //   const gameDetails = await publicClient.readContract({
+      //     address: deployedContracts[10143].GameEscrow.address,
+      //     abi: deployedContracts[10143].GameEscrow.abi,
+      //     functionName: "getGameDetails",
+      //     args: [(myGameId as `0x${string}`) || "0x0000000000000000000000000000000000000000000000000000000000000000"],
+      //   });
+
+      console.log("gameDetails", gameDetails);
 
       if (!gameDetails) {
         toast.error("Game details not found");
         return;
       }
 
-      await joinVersusGame({
+      const tx = await joinVersusGame({
         functionName: "joinGame",
-        args: [gameId as `0x${string}`, user.username],
+        args: [id as `0x${string}`, user.username],
         value: gameDetails.wagerAmount,
       });
 
+      console.log("Game join receipt:", tx);
+
       toast.success("You've joined the game!");
-      setActiveGameId(gameId);
+      setMyGameId(id);
       setHasSubmittedScore(false);
       setGameEnded(false);
 
@@ -245,63 +245,6 @@ export const VersusMode = ({ user }: { user: any }) => {
       }
     } catch (error: any) {
       console.error("Error joining game:", error);
-      toast.error(`Failed to join game: ${error.message || "Unknown error"}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle joining game by ID (from manual input or URL parameter)
-  const handleJoinGameById = async () => {
-    if (!manualGameId) {
-      toast.error("Please enter a valid game ID");
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-
-      // Fetch game details directly
-      const gameId = manualGameId as `0x${string}`;
-      setActiveGameId(gameId);
-      await refetchGameDetails?.();
-
-      if (!gameDetails) {
-        toast.error("Game not found. Please check the game ID.");
-        return;
-      }
-
-      // Check if it's for the current user
-      if (gameDetails.player2FarcasterName !== user?.username) {
-        toast.error("This game invitation is not for you.");
-        return;
-      }
-
-      // Join the game
-      await joinVersusGame({
-        functionName: "joinGame",
-        args: [gameId, user.username],
-        value: gameDetails.wagerAmount,
-      });
-
-      toast.success("You've joined the game!");
-      setActiveGameId(gameId);
-      setHasSubmittedScore(false);
-      setGameEnded(false);
-      setManualGameId("");
-
-      // Notify the opponent that the game has started
-      const opponentUsername = gameDetails.player1FarcasterName;
-      const creatorFid = await fetchUserByUsername(opponentUsername);
-      if (creatorFid) {
-        try {
-          await notifyGameStarted(Number(creatorFid.fid), user.username);
-        } catch (notifError) {
-          console.error("Failed to send game start notification:", notifError);
-        }
-      }
-    } catch (error: any) {
-      console.error("Error joining game by ID:", error);
       toast.error(`Failed to join game: ${error.message || "Unknown error"}`);
     } finally {
       setIsLoading(false);
@@ -333,72 +276,72 @@ export const VersusMode = ({ user }: { user: any }) => {
   };
 
   // End a game and distribute prizes
-  const handleEndGame = async (gameId: string) => {
-    try {
-      setIsLoading(true);
+  //   const handleEndGame = async (gameId: string) => {
+  //     try {
+  //       setIsLoading(true);
 
-      // Get game details to determine winner/loser before ending the game
-      const gameDetails = activeGames.find(game => game.id === gameId)?.details;
-      if (!gameDetails) {
-        toast.error("Game details not found");
-        return;
-      }
+  //       // Get game details to determine winner/loser before ending the game
+  //       const gameDetails = activeGames.find(game => game.id === gameId)?.details;
+  //       if (!gameDetails) {
+  //         toast.error("Game details not found");
+  //         return;
+  //       }
 
-      // Submit score if not already submitted
-      if (!hasSubmittedScore) {
-        await handleSubmitScore(gameId);
-      }
+  //       // Submit score if not already submitted
+  //       if (!hasSubmittedScore) {
+  //         await handleSubmitScore(gameId);
+  //       }
 
-      // Call endGame function which will compare submitted scores
-      await endVersusGame({
-        functionName: "endGame",
-        args: [gameId as `0x${string}`],
-      });
+  //       // Call endGame function which will compare submitted scores
+  //       await endVersusGame({
+  //         functionName: "endGame",
+  //         args: [gameId as `0x${string}`],
+  //       });
 
-      toast.success("Game ended and prizes distributed!");
-      setActiveGameId(null);
-      setGameEnded(true);
+  //       toast.success("Game ended and prizes distributed!");
+  //       setMyGameId("");
+  //       setGameEnded(true);
 
-      // Get FIDs for both players
-      const player1Fid = await fetchUserByUsername(gameDetails.player1FarcasterName);
-      const player2Fid = await fetchUserByUsername(gameDetails.player2FarcasterName);
+  //       // Get FIDs for both players
+  //       const player1Fid = await fetchUserByUsername(gameDetails.player1FarcasterName);
+  //       const player2Fid = await fetchUserByUsername(gameDetails.player2FarcasterName);
 
-      const prize = ((Number(gameDetails.wagerAmount) * 2) / 1e18).toString();
+  //       const prize = ((Number(gameDetails.wagerAmount) * 2) / 1e18).toString();
 
-      // Refresh scores after ending
-      await refetchScores();
+  //       // Refresh scores after ending
+  //       await refetchScores();
 
-      // Get the current scores
-      const player1Score = gameDetails.player1ScoreSubmitted ? Number(gameDetails.player1Score) : gameStore.score;
-      const player2Score = gameDetails.player2ScoreSubmitted ? Number(gameDetails.player2Score) : 0;
+  //       // Get the current scores
+  //       const player1Score = gameDetails.player1ScoreSubmitted ? Number(gameDetails.player1Score) : gameStore.score;
+  //       const player2Score = gameDetails.player2ScoreSubmitted ? Number(gameDetails.player2Score) : 0;
 
-      // Determine if current user is player1
-      const isPlayer1 = gameDetails.player1 === address;
-      const myScore = gameStore.score;
+  //       // Determine if current user is player1
+  //       const isPlayer1 = gameDetails.player1 === address;
+  //       const myScore = gameStore.score;
 
-      // Determine the winner and send notifications
-      if (player1Fid && player2Fid) {
-        if ((isPlayer1 && player1Score > player2Score) || (!isPlayer1 && player2Score > player1Score)) {
-          // Current user won
-          await notifyGameResult(Number(player1Fid.fid), true, myScore, prize);
-          await notifyGameResult(Number(player2Fid.fid), false, isPlayer1 ? player2Score : player1Score);
-        } else if ((isPlayer1 && player1Score < player2Score) || (!isPlayer1 && player2Score < player1Score)) {
-          // Opponent won
-          await notifyGameResult(Number(player2Fid.fid), true, isPlayer1 ? player2Score : player1Score, prize);
-          await notifyGameResult(Number(player1Fid.fid), false, myScore);
-        } else {
-          // It's a tie
-          await notifyGameResult(Number(player1Fid.fid), false, player1Score, prize + " (split)");
-          await notifyGameResult(Number(player2Fid.fid), false, player2Score, prize + " (split)");
-        }
-      }
-    } catch (error: any) {
-      console.error("Error ending game:", error);
-      toast.error(`Failed to end game: ${error.message || "Unknown error"}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  //       // Determine the winner and send notifications
+  //       if (player1Fid && player2Fid) {
+  //         if ((isPlayer1 && player1Score > player2Score) || (!isPlayer1 && player2Score > player1Score)) {
+  //           // Current user won
+  //           await notifyGameResult(Number(player1Fid.fid), true, myScore, prize);
+  //           await notifyGameResult(Number(player2Fid.fid), false, isPlayer1 ? player2Score : player1Score);
+  //         } else if ((isPlayer1 && player1Score < player2Score) || (!isPlayer1 && player2Score < player1Score)) {
+  //           // Opponent won
+  //           await notifyGameResult(Number(player2Fid.fid), true, isPlayer1 ? player2Score : player1Score, prize);
+  //           await notifyGameResult(Number(player1Fid.fid), false, myScore);
+  //         } else {
+  //           // It's a tie
+  //           await notifyGameResult(Number(player1Fid.fid), false, player1Score, prize + " (split)");
+  //           await notifyGameResult(Number(player2Fid.fid), false, player2Score, prize + " (split)");
+  //         }
+  //       }
+  //     } catch (error: any) {
+  //       console.error("Error ending game:", error);
+  //       toast.error(`Failed to end game: ${error.message || "Unknown error"}`);
+  //     } finally {
+  //       setIsLoading(false);
+  //     }
+  //   };
 
   // Cancel a pending game
   const handleCancelGame = async (gameId: string) => {
@@ -410,7 +353,7 @@ export const VersusMode = ({ user }: { user: any }) => {
       });
       toast.success("Game cancelled and wager refunded");
       setWaitingForOpponent(false);
-      setWaitingGameId(null);
+      setMyGameId("");
     } catch (error: any) {
       console.error("Error cancelling game:", error);
       toast.error(`Failed to cancel game: ${error.message || "Unknown error"}`);
@@ -420,71 +363,71 @@ export const VersusMode = ({ user }: { user: any }) => {
   };
 
   // Load active games and invites
-  useEffect(() => {
-    const loadGames = async () => {
-      if (!address || !playerActiveGames) return;
+  //   useEffect(() => {
+  //     const loadGames = async () => {
+  //       if (!address || !playerActiveGames) return;
 
-      const active: { id: string; details: VersusGame }[] = [];
-      const pending: { id: string; details: VersusGame }[] = [];
+  //       const active: { id: string; details: VersusGame }[] = [];
+  //       const pending: { id: string; details: VersusGame }[] = [];
 
-      for (const gameId of playerActiveGames) {
-        setActiveGameId(gameId);
-        await refetchGameDetails?.();
+  //       for (const gameId of playerActiveGames) {
+  //         setMyGameId(gameId);
+  //         await refetchGameDetails?.();
 
-        if (!gameDetails) continue;
+  //         if (!gameDetails) continue;
 
-        if (gameDetails.isActive) {
-          active.push({ id: gameId, details: gameDetails as VersusGame });
-          // If we're in an active game, set it as the current game
-          if (gameDetails.player1 === address || gameDetails.player2 === address) {
-            setActiveGameId(gameId);
+  //         if (gameDetails.isActive) {
+  //           active.push({ id: gameId, details: gameDetails as VersusGame });
+  //           // If we're in an active game, set it as the current game
+  //           if (gameDetails.player1 === address || gameDetails.player2 === address) {
+  //             setMyGameId(gameId);
 
-            // Check if we've already submitted our score
-            if (
-              (gameDetails.player1 === address && gameDetails.player1ScoreSubmitted) ||
-              (gameDetails.player2 === address && gameDetails.player2ScoreSubmitted)
-            ) {
-              setHasSubmittedScore(true);
-            } else {
-              setHasSubmittedScore(false);
-            }
-          }
-        } else if (
-          gameDetails.player2 === "0x0000000000000000000000000000000000000000" &&
-          gameDetails.player2FarcasterName === user?.username
-        ) {
-          // This is an invite for the current user
-          pending.push({ id: gameId, details: gameDetails as VersusGame });
-        } else if (
-          gameDetails.player1 === address &&
-          gameDetails.player2 === "0x0000000000000000000000000000000000000000"
-        ) {
-          // This is a game we created that is waiting for opponent
-          setWaitingForOpponent(true);
-          setWaitingGameId(gameId);
-        }
-      }
+  //             // Check if we've already submitted our score
+  //             if (
+  //               (gameDetails.player1 === address && gameDetails.player1ScoreSubmitted) ||
+  //               (gameDetails.player2 === address && gameDetails.player2ScoreSubmitted)
+  //             ) {
+  //               setHasSubmittedScore(true);
+  //             } else {
+  //               setHasSubmittedScore(false);
+  //             }
+  //           }
+  //         } else if (
+  //           gameDetails.player2 === "0x0000000000000000000000000000000000000000" &&
+  //           gameDetails.player2FarcasterName === user?.username
+  //         ) {
+  //           // This is an invite for the current user
+  //           pending.push({ id: gameId, details: gameDetails as VersusGame });
+  //         } else if (
+  //           gameDetails.player1 === address &&
+  //           gameDetails.player2 === "0x0000000000000000000000000000000000000000"
+  //         ) {
+  //           // This is a game we created that is waiting for opponent
+  //           setWaitingForOpponent(true);
+  //           setWaitingGameId(gameId);
+  //         }
+  //       }
 
-      setActiveGames(active);
-      setPendingInvites(pending);
-    };
+  //       setActiveGames(active);
+  //       setPendingInvites(pending);
+  //     };
 
-    loadGames();
-  }, [address, playerActiveGames, user, gameDetails, refetchGameDetails]);
+  //     loadGames();
+  //   }, [address, playerActiveGames, user, gameDetails, refetchGameDetails]);
 
   // Countdown timer for active game
   useEffect(() => {
-    if (!activeGameId) {
+    if (!myGameId) {
       setCountdown(null);
       return;
     }
 
-    const activeGame = activeGames.find(game => game.id === activeGameId);
-    if (!activeGame) return;
+    // const activeGame = activeGames.find(game => game.id === myGameId);
+    // if (!activeGame) return;
 
     const updateCountdown = () => {
       const now = Math.floor(Date.now() / 1000);
-      const endTime = Number(activeGame.details.endTime);
+      const endTime = Number(gameDetails?.endTime);
       const timeLeft = endTime - now;
 
       setCountdown(timeLeft > 0 ? timeLeft : 0);
@@ -493,12 +436,10 @@ export const VersusMode = ({ user }: { user: any }) => {
       if (timeLeft === 30) {
         try {
           // Determine opponent's FID
-          const isPlayer1 = activeGame.details.player1 === address;
-          const opponentName = isPlayer1
-            ? activeGame.details.player2FarcasterName
-            : activeGame.details.player1FarcasterName;
+          const isPlayer1 = gameDetails?.player1 === address;
+          const opponentName = isPlayer1 ? gameDetails?.player2FarcasterName : gameDetails?.player1FarcasterName;
 
-          fetchUserByUsername(opponentName).then(user => {
+          fetchUserByUsername(opponentName!).then(user => {
             if (user) notifyGameEnding(Number(user.fid), 0.5);
           });
         } catch (error) {
@@ -507,22 +448,22 @@ export const VersusMode = ({ user }: { user: any }) => {
       }
 
       // Automatically submit score and end game when timer reaches zero
-      if (timeLeft <= 0 && !gameEnded) {
-        if (!hasSubmittedScore) {
-          handleSubmitScore(activeGameId).then(() => {
-            handleEndGame(activeGameId);
-          });
-        } else {
-          handleEndGame(activeGameId);
-        }
-      }
+      //   if (timeLeft <= 0 && !gameEnded) {
+      //     if (!hasSubmittedScore) {
+      //       handleSubmitScore(myGameId).then(() => {
+      //         handleEndGame(myGameId);
+      //       });
+      //     } else {
+      //       handleEndGame(myGameId);
+      //     }
+      //   }
     };
 
     updateCountdown();
     const intervalId = setInterval(updateCountdown, 1000);
 
     return () => clearInterval(intervalId);
-  }, [activeGameId, activeGames, hasSubmittedScore, gameEnded]);
+  }, [myGameId, hasSubmittedScore, gameEnded]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -547,34 +488,6 @@ export const VersusMode = ({ user }: { user: any }) => {
         <div className="py-8 text-center">
           <p className="text-lg">Failed to connect wallet. Please refresh the page.</p>
         </div>
-      ) : activeGameId ? (
-        <div className="versus-active-game">
-          <div className="mb-6 text-center">
-            <div className="mb-2 text-xl">Game in Progress!</div>
-            {countdown !== null && <div className="text-2xl font-bold countdown">{formatTime(countdown)}</div>}
-            <div className="mt-4 text-lg">
-              Current Score: <span className="font-bold">{gameStore.score}</span>
-            </div>
-            <p className="mt-2 text-sm text-accent">Match as many monanimals as you can before time runs out!</p>
-
-            {!hasSubmittedScore && (
-              <button
-                className="mt-4 btn btn-accent"
-                onClick={() => handleSubmitScore(activeGameId)}
-                disabled={isLoading}
-              >
-                {isLoading ? <span className="loading loading-spinner"></span> : "Submit Score"}
-              </button>
-            )}
-
-            {hasSubmittedScore && (
-              <div className="p-2 mt-4 rounded-md bg-success bg-opacity-20">
-                <p className="text-success">Score submitted successfully!</p>
-                <p className="text-xs">Waiting for game to end...</p>
-              </div>
-            )}
-          </div>
-        </div>
       ) : waitingForOpponent ? (
         // Waiting screen for player 1
         <div className="p-6 text-center">
@@ -584,10 +497,10 @@ export const VersusMode = ({ user }: { user: any }) => {
           </div>
           <p className="mb-6">Your opponent has been invited and will receive a notification to join the game.</p>
 
-          {waitingGameId && (
+          {myGameId && (
             <div className="p-4 mb-6 border rounded-lg border-base-300">
               <p className="mb-2 font-semibold">Game ID:</p>
-              <p className="p-2 overflow-auto text-sm break-all bg-base-200">{waitingGameId}</p>
+              <p className="p-2 overflow-auto text-sm break-all bg-base-200">{myGameId}</p>
               <p className="mt-2 text-xs text-accent">
                 Share this ID with your opponent if they don't receive the notification.
               </p>
@@ -596,7 +509,7 @@ export const VersusMode = ({ user }: { user: any }) => {
 
           <button
             className="btn btn-error"
-            onClick={() => (waitingGameId ? handleCancelGame(waitingGameId) : setWaitingForOpponent(false))}
+            onClick={() => (myGameId ? handleCancelGame(myGameId) : setWaitingForOpponent(false))}
             disabled={isLoading}
           >
             {isLoading ? <span className="loading loading-spinner"></span> : "Cancel Challenge"}
@@ -605,7 +518,7 @@ export const VersusMode = ({ user }: { user: any }) => {
       ) : (
         <div className="versus-lobby">
           {/* Join by Game ID section (This appears if a gameId is provided in URL) */}
-          {manualGameId && (
+          {myGameId && (
             <div className="p-4 mb-8 border rounded-lg border-accent">
               <h3 className="mb-3 text-lg font-semibold">Join Challenge</h3>
               <div className="form-control">
@@ -615,12 +528,16 @@ export const VersusMode = ({ user }: { user: any }) => {
                 <input
                   type="text"
                   className="w-full input input-bordered"
-                  value={manualGameId}
-                  onChange={e => setManualGameId(e.target.value)}
-                  readOnly={!!manualGameId}
+                  value={myGameId}
+                  onChange={e => setMyGameId(e.target.value)}
+                  readOnly={!!myGameId}
                 />
               </div>
-              <button className="w-full mt-4 btn btn-accent" onClick={handleJoinGameById} disabled={isLoading}>
+              <button
+                className="w-full mt-4 btn btn-accent"
+                onClick={() => handleJoinGame(myGameId)}
+                disabled={isLoading}
+              >
                 {isLoading ? <span className="loading loading-spinner"></span> : "Accept Challenge"}
               </button>
             </div>
@@ -663,7 +580,7 @@ export const VersusMode = ({ user }: { user: any }) => {
           </div>
 
           {/* Manual Join section */}
-          {!manualGameId && (
+          {/* {!myGameId && (
             <div className="p-4 mb-8 border rounded-lg border-base-300">
               <h3 className="mb-3 text-lg font-semibold">Join by Game ID</h3>
               <div className="form-control">
@@ -674,22 +591,22 @@ export const VersusMode = ({ user }: { user: any }) => {
                   type="text"
                   placeholder="Enter game ID shared by your friend"
                   className="w-full input input-bordered"
-                  value={manualGameId}
-                  onChange={e => setManualGameId(e.target.value)}
+                  value={myGameId}
+                  onChange={e => setMyGameId(e.target.value)}
                 />
               </div>
               <button
                 className="w-full mt-4 btn btn-accent"
-                onClick={handleJoinGameById}
-                disabled={isLoading || !manualGameId}
+                onClick={() => handleJoinGame(myGameId)}
+                disabled={isLoading || !myGameId}
               >
                 {isLoading ? <span className="loading loading-spinner"></span> : "Join Game"}
               </button>
             </div>
-          )}
+          )} */}
 
           {/* Pending invites section */}
-          {pendingInvites.length > 0 && (
+          {/* {pendingInvites.length > 0 && (
             <div className="mb-8">
               <h3 className="mb-3 text-lg font-semibold">Game Invitations</h3>
               <div className="space-y-3">
@@ -714,10 +631,10 @@ export const VersusMode = ({ user }: { user: any }) => {
                 ))}
               </div>
             </div>
-          )}
+          )} */}
 
           {/* Your active games section (games you've created) */}
-          {activeGames.length > 0 && (
+          {/* {activeGames.length > 0 && (
             <div>
               <h3 className="mb-3 text-lg font-semibold">Your Active Games</h3>
               <div className="space-y-3">
@@ -746,9 +663,9 @@ export const VersusMode = ({ user }: { user: any }) => {
                 ))}
               </div>
             </div>
-          )}
+          )} */}
 
-          {pendingInvites.length === 0 && activeGames.length === 0 && !manualGameId && (
+          {pendingInvites.length === 0 && !myGameId && (
             <div className="py-4 text-center text-base-content opacity-70">No active games or pending invitations</div>
           )}
         </div>
