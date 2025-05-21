@@ -1,6 +1,6 @@
 "use client";
 
-import { FC, useState } from "react";
+import { FC, useEffect, useState } from "react";
 import Board from "./Board";
 import Stats from "./Stats";
 import { VersusMode } from "./VersusMode";
@@ -27,6 +27,18 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
   user,
 }) => {
   const [activeTab, setActiveTab] = useState<"solo" | "versus">("solo");
+
+  // Check for tab parameter in URL on component mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+
+      if (tabParam === "versus") {
+        setActiveTab("versus");
+      }
+    }
+  }, []);
 
   return (
     <div className="flex flex-col w-full h-full">

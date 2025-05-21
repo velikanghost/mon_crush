@@ -117,27 +117,24 @@ export const ConnectFarcasterStep: FC<ConnectFarcasterStepProps> = ({
         <h3 className="text-xl font-semibold">Connecting your Farcaster account</h3>
       ) : (
         <div className="flex flex-col items-center justify-center gap-2 p-2 mt-2 text-xs bg-base-300 rounded-xl">
-          <h3 className="text-xl font-semibold">
-            Welcome,{" "}
-            <span className="flex items-center gap-2">
-              <Image
-                src={user.pfp_url}
-                alt={user.display_name || user.username || "Farcaster user"}
-                width={20}
-                height={20}
-              />
-            </span>
-            {user.display_name || user.username || "Farcaster user"}!
-          </h3>
+          <h3 className="mb-0 text-xl font-semibold">Welcome</h3>
+          <div className="flex items-center gap-3">
+            <img
+              src={user.pfp_url}
+              alt={user.display_name || user.username || "Farcaster user"}
+              className="object-cover w-10 h-10 rounded-full"
+            />
+            <p className="my-0 text-xl font-semibold">{user.display_name || user.username || "Farcaster user"}</p>
+          </div>
 
-          <p>{connectedAddress}</p>
+          <p className="py-0 text-sm">{connectedAddress}</p>
         </div>
       )}
 
       {!user ? (
         <p className="text-center">Please wait...</p>
       ) : (
-        <div className="flex flex-col items-center justify-center gap-2 p-2 mt-2 text-xs bg-base-300 rounded-xl">
+        <div className="flex flex-col items-center justify-center gap-2 p-2 mt-2 text-xs rounded-xl">
           {user && currentStep === 0 && (
             <>
               {/* Mini setup information for the user */}
@@ -145,21 +142,16 @@ export const ConnectFarcasterStep: FC<ConnectFarcasterStepProps> = ({
                 <strong>What happens next?</strong>
                 <ul className="mt-2 space-y-1 list-disc list-inside">
                   <li>
-                    <b>Game Wallet Creation:</b> A dedicated game wallet will be generated for you. This wallet is used
-                    to play Monad Match securely and keeps your main wallet safe.
+                    <b>Game Wallet Creation:</b> A dedicated game wallet will be generated for you.
                   </li>
                   <li>
                     <b>Why a Game Wallet?</b> The game wallet allows you to interact with the game without exposing your
                     main wallet to risks or unnecessary permissions.
                   </li>
                   <li>
-                    <b>Deposit MON:</b> You will be asked to deposit MON tokens into your game wallet. This is required
-                    to participate in the game rounds.
-                  </li>
-                  <li>
-                    <b>Link Wallet Transaction:</b> After depositing, you will need to confirm a second transaction to
-                    link your game wallet to your Farcaster account. This step is necessary to verify ownership and
-                    enable gameplay features.
+                    <b>Deposit MON & Link Wallet:</b> You will be asked to deposit MON tokens into your game wallet.
+                    After depositing, you will need to confirm a second transaction to verify ownership and enable
+                    gameplay features.
                   </li>
                 </ul>
               </div>

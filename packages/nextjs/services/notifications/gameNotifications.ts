@@ -40,12 +40,17 @@ async function sendNotification(
   }
 }
 
-export async function notifyGameInvitation(targetFid: number, senderUsername: string, wagerAmount: string) {
+export async function notifyGameInvitation(
+  targetFid: number,
+  senderUsername: string,
+  wagerAmount: string,
+  gameId: string,
+) {
   console.log(`Sending game invitation to FID ${targetFid} from ${senderUsername}`);
   return await sendNotification([targetFid], {
     title: "New Game Challenge!",
     body: `${senderUsername} has challenged you to a game with ${wagerAmount} MON at stake!`,
-    target_url: `${process.env.NEXT_PUBLIC_URL}`,
+    target_url: `${process.env.NEXT_PUBLIC_URL}?gameId=${gameId}&tab=versus`,
   });
 }
 
