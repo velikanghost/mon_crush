@@ -325,3 +325,168 @@ export const sendBatchMatchTransactions = async (
     throw new Error(`Failed to queue batch transactions: ${error}`);
   }
 };
+
+/**
+ * Send a transaction using the game wallet to submit a score for a versus game
+ * Also updates the score in real-time via websocket
+ *
+ * @param gameWalletPrivateKey The private key of the game wallet
+ * @param gameId The id of the game to submit a score for
+ * @param score The score to submit
+ * @param playerAddress The address of the player submitting the score
+ * @returns boolean indicating success or failure
+ */
+export const submitVersusGameScore = async (
+  gameWalletPrivateKey: string,
+  gameId: string,
+  score: number,
+  playerAddress: string,
+): Promise<boolean> => {
+  if (!gameWalletPrivateKey) {
+    throw new Error("Game wallet private key is required");
+  }
+
+  // Make sure we have a valid score (prevent submitting 0 accidentally)
+  if (score <= 0) {
+    console.warn("Warning: Attempting to submit a score of 0 or less. This might be unintended.");
+  }
+
+  console.log("Submitting score via websocket and blockchain:", score);
+
+  try {
+    // Convert private key to proper format
+    const formattedPrivateKey = gameWalletPrivateKey.startsWith("0x")
+      ? (gameWalletPrivateKey as `0x${string}`)
+      : (`0x${gameWalletPrivateKey}` as `0x${string}`);
+
+    // Create account and wallet client
+    const account = privateKeyToAccount(formattedPrivateKey);
+    const walletClient = createWalletClient({
+      account,
+      chain: monadTestnet,
+      transport,
+    });
+
+    const publicClient = createPublicClient({
+      chain: monadTestnet,
+      transport,
+    });
+
+    // Send the transaction to update score on-chain
+    const hash = await walletClient.writeContract({
+      address: deployedContracts[10143].GameEscrow.address,
+      abi: deployedContracts[10143].GameEscrow.abi,
+      functionName: "submitScore",
+      args: [gameId as `0x${string}`, playerAddress as `0x${string}`, BigInt(score)],
+      chain: monadTestnet,
+    });
+
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+    console.log("Score submitted successfully to blockchain:", receipt);
+    return true;
+  } catch (error) {
+    console.error("Error submitting versus game score:", error);
+    throw new Error(`Failed to submit versus game score: ${error}`);
+  }
+};
+
+/**
+ * End a versus game and distribute the prize to the winner
+ * Can optionally use scores from the websocket instead of relying on blockchain submissions
+ *
+ * @param gameWalletPrivateKey The private key of the game wallet
+ * @param gameId The id of the game to end
+ * @param player1Score Optional score for player 1 from websocket
+ * @param player2Score Optional score for player 2 from websocket
+ * @param player1Address Optional address of player 1
+ * @param player2Address Optional address of player 2
+ */
+export const endVersusGame = async (
+  gameWalletPrivateKey: string,
+  gameId: string,
+  player1Score?: number,
+  player2Score?: number,
+  player1Address?: string,
+  player2Address?: string,
+): Promise<void> => {
+  if (!gameWalletPrivateKey) {
+    throw new Error("Game wallet private key is required");
+  }
+
+  try {
+    // Convert private key to proper format
+    const formattedPrivateKey = gameWalletPrivateKey.startsWith("0x")
+      ? (gameWalletPrivateKey as `0x${string}`)
+      : (`0x${gameWalletPrivateKey}` as `0x${string}`);
+
+    // Create account and wallet client
+    const account = privateKeyToAccount(formattedPrivateKey);
+    const walletClient = createWalletClient({
+      account,
+      chain: monadTestnet,
+      transport,
+    });
+
+    const publicClient = createPublicClient({
+      chain: monadTestnet,
+      transport,
+    });
+
+    // If we have scores from the websocket, submit them before ending the game
+    if (player1Score !== undefined && player1Address) {
+      console.log(`Submitting player 1 score from websocket: ${player1Score}`);
+      try {
+        // Submit player 1 score
+        const scoreHash1 = await walletClient.writeContract({
+          address: deployedContracts[10143].GameEscrow.address,
+          abi: deployedContracts[10143].GameEscrow.abi,
+          functionName: "submitScore",
+          args: [gameId as `0x${string}`, player1Address as `0x${string}`, BigInt(player1Score)],
+          chain: monadTestnet,
+        });
+        await publicClient.waitForTransactionReceipt({ hash: scoreHash1 });
+        console.log("Player 1 score submitted:", player1Score);
+      } catch (err) {
+        console.error("Error submitting player 1 score:", err);
+        // Continue to end game even if score submission fails
+      }
+    }
+
+    if (player2Score !== undefined && player2Address) {
+      console.log(`Submitting player 2 score from websocket: ${player2Score}`);
+      try {
+        // Submit player 2 score
+        const scoreHash2 = await walletClient.writeContract({
+          address: deployedContracts[10143].GameEscrow.address,
+          abi: deployedContracts[10143].GameEscrow.abi,
+          functionName: "submitScore",
+          args: [gameId as `0x${string}`, player2Address as `0x${string}`, BigInt(player2Score)],
+          chain: monadTestnet,
+        });
+        await publicClient.waitForTransactionReceipt({ hash: scoreHash2 });
+        console.log("Player 2 score submitted:", player2Score);
+      } catch (err) {
+        console.error("Error submitting player 2 score:", err);
+        // Continue to end game even if score submission fails
+      }
+    }
+
+    // Send the transaction to end the game
+    console.log("Ending game with ID:", gameId);
+    const hash = await walletClient.writeContract({
+      address: deployedContracts[10143].GameEscrow.address,
+      abi: deployedContracts[10143].GameEscrow.abi,
+      functionName: "endGame",
+      args: [gameId as `0x${string}`],
+      chain: monadTestnet,
+    });
+
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+    console.log("Game ended successfully:", receipt);
+  } catch (error) {
+    console.error("Error ending versus game:", error);
+    throw new Error(`Failed to end versus game: ${error}`);
+  }
+};

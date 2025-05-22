@@ -10,10 +10,10 @@ interface SessionData {
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
- * Store a user session with the signature, encrypted with a key derived from the address
+ * Store a user session with the signature, encrypted with a key derived from the address or FID+address
  * Set to expire after 3 days
  *
- * @param address The user's wallet address
+ * @param address The user's identifier (can be wallet address or fid_address for Farcaster users)
  * @param signature The signature to store
  */
 export const storeUserSession = (address: string, signature: string): void => {
@@ -43,7 +43,7 @@ export const storeUserSession = (address: string, signature: string): void => {
 /**
  * Retrieve a stored user session if it exists and hasn't expired
  *
- * @param address The user's wallet address
+ * @param address The user's identifier (can be wallet address or fid_address for Farcaster users)
  * @returns The signature if valid, or null if expired or not found
  */
 export const getUserSession = (address: string): string | null => {
@@ -79,7 +79,7 @@ export const getUserSession = (address: string): string | null => {
 /**
  * Extend the user session by another 3 days
  *
- * @param address The user's wallet address
+ * @param address The user's identifier (can be wallet address or fid_address for Farcaster users)
  */
 export const extendUserSession = (address: string): void => {
   if (!address) return;
@@ -101,7 +101,7 @@ export const extendUserSession = (address: string): void => {
 /**
  * Clear the user session
  *
- * @param address The user's wallet address
+ * @param address The user's identifier (can be wallet address or fid_address for Farcaster users)
  */
 export const clearUserSession = (address: string): void => {
   if (!address) return;

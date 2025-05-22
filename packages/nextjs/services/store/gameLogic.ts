@@ -178,9 +178,9 @@ export const refillBoard = (board: number[][], checkForChainMatches = true) => {
   const newBoard = board.map(row => [...row]);
 
   // For each column, move existing candies down to fill gaps
-  for (let x = 0; x < 8; x++) {
+  for (let x = 0; x < 6; x++) {
     let emptySpaces = 0;
-    for (let y = 7; y >= 0; y--) {
+    for (let y = 5; y >= 0; y--) {
       if (newBoard[y][x] === 0) {
         emptySpaces++;
       } else if (emptySpaces > 0) {
@@ -200,7 +200,7 @@ export const refillBoard = (board: number[][], checkForChainMatches = true) => {
       }
       if (
         x >= 1 &&
-        x < 7 &&
+        x < 5 &&
         newBoard[y][x - 1] !== 0 &&
         newBoard[y][x + 1] !== 0 &&
         newBoard[y][x - 1] === newBoard[y][x + 1]
@@ -209,7 +209,7 @@ export const refillBoard = (board: number[][], checkForChainMatches = true) => {
       }
 
       // Check below for vertical matches (we're filling top-down)
-      if (y < 6 && newBoard[y + 1][x] !== 0 && newBoard[y + 2][x] !== 0 && newBoard[y + 1][x] === newBoard[y + 2][x]) {
+      if (y < 4 && newBoard[y + 1][x] !== 0 && newBoard[y + 2][x] !== 0 && newBoard[y + 1][x] === newBoard[y + 2][x]) {
         invalidTypes.add(newBoard[y + 1][x]);
       }
 

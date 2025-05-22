@@ -23,3 +23,4 @@ node_modules
 dist
 .vercel
 .env*.local
+HOW_IT_WORKS.md
