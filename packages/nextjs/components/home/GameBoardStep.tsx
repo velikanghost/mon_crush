@@ -110,17 +110,8 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
           </div>
         </>
       ) : (
-        <div className="flex-grow px-2">
+        <div className="flex-grow px-2 pb-3">
           <VersusMode user={user} gameWallet={gameWallet} />
-
-          {/* Game Board for Versus Mode */}
-          {/* <div className="flex flex-col items-center justify-center w-full mt-4" onClick={handleBoardClick}>
-            {gameWallet && gameStore.gameBoard ? (
-              <Board />
-            ) : (
-              <div className="text-xl text-center">Initializing Game Board...</div>
-            )}
-          </div> */}
         </div>
       )}
 

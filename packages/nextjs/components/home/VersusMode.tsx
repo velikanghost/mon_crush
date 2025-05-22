@@ -335,7 +335,8 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       setIsLoading(true);
 
       // Refresh game details first to make sure we have the latest state
-      await refetchGameDetails();
+      const gameDetails = await refetchGameDetails();
+      console.log("gameDetails", gameDetails);
 
       // Check if the game can be ended
       if (!gameDetails) {
@@ -343,7 +344,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         return;
       }
 
-      if (!gameDetails.isActive || gameDetails.isClaimed) {
+      if (!gameDetails?.data?.isActive || gameDetails.data.isClaimed) {
         toast.success("Game has already ended");
         setGameInProgress(false);
         setGameEnded(true);
@@ -368,27 +369,27 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       setGameEnded(true);
 
       // Get FIDs for both players
-      const player1Fid = await fetchUserByUsername(gameDetails.player1FarcasterName);
-      const player2Fid = await fetchUserByUsername(gameDetails.player2FarcasterName);
+      const player1Fid = await fetchUserByUsername(gameDetails.data.player1FarcasterName);
+      const player2Fid = await fetchUserByUsername(gameDetails.data.player2FarcasterName);
 
-      const prize = ((Number(gameDetails.wagerAmount) * 2) / 1e18).toString();
+      const prize = ((Number(gameDetails.data.wagerAmount) * 2) / 1e18).toString();
 
       // Refresh game details first to make sure we have the latest state
       await refetchGameDetails();
 
       // Get the current scores
-      const isPlayer1 = gameDetails.player1 === address;
+      const isPlayer1 = gameDetails.data.player1 === address;
       const myScore = gameStore.score;
 
       // Get more accurate scores
-      const player1Score = gameDetails.player1ScoreSubmitted
-        ? Number(gameDetails.player1Score)
+      const player1Score = gameDetails.data.player1ScoreSubmitted
+        ? Number(gameDetails.data.player1Score)
         : isPlayer1
           ? myScore
           : 0;
 
-      const player2Score = gameDetails.player2ScoreSubmitted
-        ? Number(gameDetails.player2Score)
+      const player2Score = gameDetails.data.player2ScoreSubmitted
+        ? Number(gameDetails.data.player2Score)
         : !isPlayer1
           ? myScore
           : 0;
@@ -497,10 +498,12 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       }
 
       // Automatically submit score and end game when timer reaches zero
-      if (timeLeft <= 0 && !gameEnded && !hasTriggeredEndGame) {
+      if (timeLeft <= 0 && !hasTriggeredEndGame) {
         setHasTriggeredEndGame(true); // Set flag to prevent multiple calls
 
         if (!hasSubmittedScore && !isSubmittingScore) {
+          console.log("score", gameStore.score);
+
           handleSubmitScore(myGameId).then(() => {
             // Add a delay between submitting score and ending game
             setTimeout(() => {
@@ -527,6 +530,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
     hasSubmittedScore,
     isSubmittingScore,
     isEndingGame,
+    gameStore.score,
     hasTriggeredEndGame,
   ]);
 
@@ -538,8 +542,6 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
 
   return (
     <div className="p-4 rounded-lg shadow-lg bg-base-100">
-      <h2 className="mb-4 text-xl font-bold">Versus Mode</h2>
-
       {isConnecting ? (
         <div className="py-8 text-center">
           <span className="loading loading-spinner"></span>
@@ -656,7 +658,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
           )}
 
           {/* Create new game section */}
-          <div className="p-4 mb-8 border rounded-lg border-base-300">
+          <div className="p-4 mb-5 border rounded-lg border-base-300">
             <h3 className="mb-3 text-lg font-semibold">Challenge a Friend</h3>
             <div className="form-control">
               <label className="label">
@@ -690,10 +692,6 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
               {isLoading ? <span className="loading loading-spinner"></span> : "Send Challenge"}
             </button>
           </div>
-
-          {pendingInvites.length === 0 && !myGameId && (
-            <div className="py-4 text-center text-base-content opacity-70">No active games or pending invitations</div>
-          )}
         </div>
       )}
     </div>

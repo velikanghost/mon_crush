@@ -439,7 +439,7 @@ export default function Home() {
   return (
     <>
       {/* Main container with min-height to ensure footer stays at bottom */}
-      <div className="flex flex-col min-h-screen">
+      <div className="flex flex-col min-h-screen w-full">
         {/* Main Layout - Fixed height, no scrolling */}
         <div className="flex justify-between overflow-hidden mt-[2%] gap-6 flex-grow">
           {/* Conditional Rendering for Steps or Game */}
