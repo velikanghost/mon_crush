@@ -4,6 +4,7 @@ import { FC, useEffect, useState } from "react";
 import Board from "./Board";
 import Stats from "./Stats";
 import { VersusMode } from "./VersusMode";
+import { LocalAccount } from "viem";
 import { ChevronRightIcon, SpeakerWaveIcon, SpeakerXMarkIcon } from "@heroicons/react/24/outline";
 import { GameWalletDetails } from "~~/components/scaffold-eth/GameWalletDetails";
 
@@ -13,7 +14,7 @@ interface GameBoardStepProps {
   handleToggleMusic: () => void;
   handleResetGame: () => Promise<void>;
   handleBoardClick: () => void;
-  gameWallet: any;
+  gameWallet: LocalAccount;
   user: any;
 }
 
@@ -110,7 +111,7 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
         </>
       ) : (
         <div className="flex-grow px-2">
-          <VersusMode user={user} />
+          <VersusMode user={user} gameWallet={gameWallet} />
 
           {/* Game Board for Versus Mode */}
           {/* <div className="flex flex-col items-center justify-center w-full mt-4" onClick={handleBoardClick}>

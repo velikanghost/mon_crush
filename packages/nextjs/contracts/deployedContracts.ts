@@ -1070,7 +1070,7 @@ const deployedContracts = {
       deploymentScript: "Deploy.s.sol",
     },
     GameEscrow: {
-      address: "0x9cf1854c58c4e20a9e4d85c93797238a92e0247d",
+      address: "0xe3fdb0aefef64b71d9f0c86952bc7d42b1bb4e45",
       abi: [
         {
           type: "constructor",
@@ -1388,6 +1388,11 @@ const deployedContracts = {
               internalType: "bytes32",
             },
             {
+              name: "player",
+              type: "address",
+              internalType: "address",
+            },
+            {
               name: "score",
               type: "uint256",
               internalType: "uint256",
@@ -1627,7 +1632,7 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deploymentFile: "run-1747219440.json",
+      deploymentFile: "run-1747899355.json",
       deploymentScript: "Deploy.s.sol",
     },
   },

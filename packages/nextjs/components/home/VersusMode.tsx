@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import Board from "./Board";
 import toast from "react-hot-toast";
-import { parseEther } from "viem";
+import { LocalAccount, parseEther } from "viem";
 import { useAccount, useConnect, useSwitchChain } from "wagmi";
 import { useScaffoldReadContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
 import { fetchUserByUsername } from "~~/lib/neynar";
@@ -12,6 +13,7 @@ import {
   notifyGameStarted,
 } from "~~/services/notifications/gameNotifications";
 import { useGameStore } from "~~/services/store/gameStore";
+import { endVersusGame, submitVersusGameScore } from "~~/services/wallet/gameWalletService";
 
 interface VersusGame {
   player1: string;
@@ -29,7 +31,7 @@ interface VersusGame {
   player2ScoreSubmitted: boolean;
 }
 
-export const VersusMode = ({ user }: { user: any }) => {
+export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalAccount }) => {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { switchChain } = useSwitchChain();
@@ -45,10 +47,17 @@ export const VersusMode = ({ user }: { user: any }) => {
   const [hasSubmittedScore, setHasSubmittedScore] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
 
+  // Throttling flags to prevent multiple simultaneous calls
+  const [isSubmittingScore, setIsSubmittingScore] = useState(false);
+  const [isEndingGame, setIsEndingGame] = useState(false);
+  const [hasTriggeredEndGame, setHasTriggeredEndGame] = useState(false);
+
   // New state for waiting screen and challenge ID
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
-  //const [waitingGameId, setWaitingGameId] = useState<string | null>(null);
+  // New state to track if game is in progress (after accepting/creating)
+  const [gameInProgress, setGameInProgress] = useState(false);
   const [myGameId, setMyGameId] = useState("");
+  const [opponent, setOpponent] = useState("");
 
   // Add connection loading state
   const [isConnecting, setIsConnecting] = useState(false);
@@ -90,7 +99,19 @@ export const VersusMode = ({ user }: { user: any }) => {
 
   useEffect(() => {
     console.log("gameDetails", gameDetails);
-  }, [gameDetails]);
+    // If game details are loaded and game is active, set game in progress
+    if (gameDetails && gameDetails.isActive) {
+      setGameInProgress(true);
+      // Set opponent name for display
+      const isPlayer1 = gameDetails.player1 === address;
+      setOpponent(isPlayer1 ? gameDetails.player2FarcasterName : gameDetails.player1FarcasterName);
+    } else if (gameDetails && !gameDetails.isActive && gameInProgress) {
+      // If game is no longer active but we thought it was
+      toast.success("Game has ended");
+      setGameInProgress(false);
+      setGameEnded(true);
+    }
+  }, [gameDetails, address, gameInProgress]);
 
   // Contract write hooks
   const { writeContractAsync: createVersusGame } = useScaffoldWriteContract({
@@ -101,15 +122,7 @@ export const VersusMode = ({ user }: { user: any }) => {
     contractName: "GameEscrow",
   });
 
-  const { writeContractAsync: endVersusGame } = useScaffoldWriteContract({
-    contractName: "GameEscrow",
-  });
-
   const { writeContractAsync: cancelVersusGame } = useScaffoldWriteContract({
-    contractName: "GameEscrow",
-  });
-
-  const { writeContractAsync: submitGameScore } = useScaffoldWriteContract({
     contractName: "GameEscrow",
   });
 
@@ -170,8 +183,7 @@ export const VersusMode = ({ user }: { user: any }) => {
             onBlockConfirmation: async txnReceipt => {
               setWaitingForOpponent(true);
               const gameId = txnReceipt.logs[0].topics[1];
-              //localStorage.setItem("myGameId", gameId!);
-              //console.log(txnReceipt);
+              setMyGameId(gameId as string);
 
               try {
                 await notifyGameInvitation(
@@ -181,6 +193,7 @@ export const VersusMode = ({ user }: { user: any }) => {
                   gameId as `0x${string}`,
                 );
                 toast.success(`Game invitation sent to ${opponentName}!`);
+                setOpponent(opponentName);
                 setOpponentName("");
               } catch (notifError) {
                 console.error("Failed to send notification:", notifError);
@@ -232,6 +245,17 @@ export const VersusMode = ({ user }: { user: any }) => {
       setMyGameId(id);
       setHasSubmittedScore(false);
       setGameEnded(false);
+      setHasTriggeredEndGame(false);
+
+      // Set game in progress to show game board
+      setGameInProgress(true);
+      // Set opponent name for display
+      setOpponent(gameDetails.player1FarcasterName);
+
+      // Initialize the game board if not already initialized
+      if (!gameStore.isInitialized) {
+        gameStore.initGame();
+      }
 
       // Notify the opponent that the game has started
       const opponentUsername = gameDetails.player1FarcasterName;
@@ -243,6 +267,9 @@ export const VersusMode = ({ user }: { user: any }) => {
           console.error("Failed to send game start notification:", notifError);
         }
       }
+
+      // Refresh game details to get the updated state
+      refetchGameDetails();
     } catch (error: any) {
       console.error("Error joining game:", error);
       toast.error(`Failed to join game: ${error.message || "Unknown error"}`);
@@ -253,95 +280,153 @@ export const VersusMode = ({ user }: { user: any }) => {
 
   // Submit score to contract
   const handleSubmitScore = async (gameId: string) => {
-    if (!gameId || hasSubmittedScore) return;
+    if (!gameId || hasSubmittedScore || isSubmittingScore) return;
 
     try {
+      setIsSubmittingScore(true);
       setIsLoading(true);
       const score = gameStore.score;
 
-      await submitGameScore({
-        functionName: "submitScore",
-        args: [gameId as `0x${string}`, BigInt(score)],
-      });
+      // Get game wallet private key from gameStore
+      const gameWalletPrivateKey = gameStore.gameWalletPrivateKey;
 
-      toast.success("Score submitted!");
-      setHasSubmittedScore(true);
-      refetchScores();
+      if (!gameWalletPrivateKey) {
+        toast.error("Game wallet private key not available");
+        return;
+      }
+
+      // Check if game is still active before submitting score
+      await refetchGameDetails();
+      if (!gameDetails || !gameDetails.isActive) {
+        toast.success("Game is no longer active");
+        setGameInProgress(false);
+        return;
+      }
+
+      // Use the gameWalletService function
+      const success = await submitVersusGameScore(gameWalletPrivateKey, gameId, score, address as `0x${string}`);
+
+      if (success) {
+        toast.success("Score submitted!");
+        setHasSubmittedScore(true);
+        refetchScores();
+      } else {
+        toast.error("Failed to submit score");
+      }
     } catch (error: any) {
       console.error("Error submitting score:", error);
-      toast.error(`Failed to submit score: ${error.message || "Unknown error"}`);
+      if (error.message && error.message.includes("429")) {
+        toast.error("Rate limit exceeded. Please try again in a moment.");
+      } else {
+        toast.error(`Failed to submit score: ${error.message || "Unknown error"}`);
+      }
     } finally {
+      setIsSubmittingScore(false);
       setIsLoading(false);
     }
   };
 
   // End a game and distribute prizes
-  //   const handleEndGame = async (gameId: string) => {
-  //     try {
-  //       setIsLoading(true);
+  const handleEndGame = async (gameId: string) => {
+    if (isEndingGame) return;
 
-  //       // Get game details to determine winner/loser before ending the game
-  //       const gameDetails = activeGames.find(game => game.id === gameId)?.details;
-  //       if (!gameDetails) {
-  //         toast.error("Game details not found");
-  //         return;
-  //       }
+    try {
+      setIsEndingGame(true);
+      setIsLoading(true);
 
-  //       // Submit score if not already submitted
-  //       if (!hasSubmittedScore) {
-  //         await handleSubmitScore(gameId);
-  //       }
+      // Refresh game details first to make sure we have the latest state
+      await refetchGameDetails();
 
-  //       // Call endGame function which will compare submitted scores
-  //       await endVersusGame({
-  //         functionName: "endGame",
-  //         args: [gameId as `0x${string}`],
-  //       });
+      // Check if the game can be ended
+      if (!gameDetails) {
+        toast.error("Game details not found");
+        return;
+      }
 
-  //       toast.success("Game ended and prizes distributed!");
-  //       setMyGameId("");
-  //       setGameEnded(true);
+      if (!gameDetails.isActive || gameDetails.isClaimed) {
+        toast.success("Game has already ended");
+        setGameInProgress(false);
+        setGameEnded(true);
+        return;
+      }
 
-  //       // Get FIDs for both players
-  //       const player1Fid = await fetchUserByUsername(gameDetails.player1FarcasterName);
-  //       const player2Fid = await fetchUserByUsername(gameDetails.player2FarcasterName);
+      // Get game wallet private key from gameStore
+      const gameWalletPrivateKey = gameStore.gameWalletPrivateKey;
 
-  //       const prize = ((Number(gameDetails.wagerAmount) * 2) / 1e18).toString();
+      if (!gameWalletPrivateKey) {
+        toast.error("Game wallet private key not available");
+        return;
+      }
 
-  //       // Refresh scores after ending
-  //       await refetchScores();
+      await refetchScores();
 
-  //       // Get the current scores
-  //       const player1Score = gameDetails.player1ScoreSubmitted ? Number(gameDetails.player1Score) : gameStore.score;
-  //       const player2Score = gameDetails.player2ScoreSubmitted ? Number(gameDetails.player2Score) : 0;
+      // Use the gameWalletService function
+      await endVersusGame(gameWalletPrivateKey, gameId);
 
-  //       // Determine if current user is player1
-  //       const isPlayer1 = gameDetails.player1 === address;
-  //       const myScore = gameStore.score;
+      toast.success("Game ended and prizes distributed!");
+      setMyGameId("");
+      setGameEnded(true);
 
-  //       // Determine the winner and send notifications
-  //       if (player1Fid && player2Fid) {
-  //         if ((isPlayer1 && player1Score > player2Score) || (!isPlayer1 && player2Score > player1Score)) {
-  //           // Current user won
-  //           await notifyGameResult(Number(player1Fid.fid), true, myScore, prize);
-  //           await notifyGameResult(Number(player2Fid.fid), false, isPlayer1 ? player2Score : player1Score);
-  //         } else if ((isPlayer1 && player1Score < player2Score) || (!isPlayer1 && player2Score < player1Score)) {
-  //           // Opponent won
-  //           await notifyGameResult(Number(player2Fid.fid), true, isPlayer1 ? player2Score : player1Score, prize);
-  //           await notifyGameResult(Number(player1Fid.fid), false, myScore);
-  //         } else {
-  //           // It's a tie
-  //           await notifyGameResult(Number(player1Fid.fid), false, player1Score, prize + " (split)");
-  //           await notifyGameResult(Number(player2Fid.fid), false, player2Score, prize + " (split)");
-  //         }
-  //       }
-  //     } catch (error: any) {
-  //       console.error("Error ending game:", error);
-  //       toast.error(`Failed to end game: ${error.message || "Unknown error"}`);
-  //     } finally {
-  //       setIsLoading(false);
-  //     }
-  //   };
+      // Get FIDs for both players
+      const player1Fid = await fetchUserByUsername(gameDetails.player1FarcasterName);
+      const player2Fid = await fetchUserByUsername(gameDetails.player2FarcasterName);
+
+      const prize = ((Number(gameDetails.wagerAmount) * 2) / 1e18).toString();
+
+      // Refresh game details first to make sure we have the latest state
+      await refetchGameDetails();
+
+      // Get the current scores
+      const isPlayer1 = gameDetails.player1 === address;
+      const myScore = gameStore.score;
+
+      // Get more accurate scores
+      const player1Score = gameDetails.player1ScoreSubmitted
+        ? Number(gameDetails.player1Score)
+        : isPlayer1
+          ? myScore
+          : 0;
+
+      const player2Score = gameDetails.player2ScoreSubmitted
+        ? Number(gameDetails.player2Score)
+        : !isPlayer1
+          ? myScore
+          : 0;
+
+      // Determine the winner and send notifications
+      if (player1Fid && player2Fid) {
+        if ((isPlayer1 && player1Score > player2Score) || (!isPlayer1 && player2Score > player1Score)) {
+          // Current user won
+          await notifyGameResult(Number(player1Fid.fid), true, myScore, prize);
+          await notifyGameResult(Number(player2Fid.fid), false, isPlayer1 ? player2Score : player1Score);
+        } else if ((isPlayer1 && player1Score < player2Score) || (!isPlayer1 && player2Score < player1Score)) {
+          // Opponent won
+          await notifyGameResult(Number(player2Fid.fid), true, isPlayer1 ? player2Score : player1Score, prize);
+          await notifyGameResult(Number(player1Fid.fid), false, myScore);
+        } else {
+          // It's a tie
+          await notifyGameResult(Number(player1Fid.fid), false, player1Score, prize + " (split)");
+          await notifyGameResult(Number(player2Fid.fid), false, player2Score, prize + " (split)");
+        }
+      }
+
+      setGameInProgress(false);
+    } catch (error: any) {
+      console.error("Error ending game:", error);
+      if (error.message && error.message.includes("429")) {
+        toast.error("Rate limit exceeded. Please try again in a moment.");
+      } else if (error.message && error.message.includes("Game not active")) {
+        toast.success("Game has already ended");
+        setGameInProgress(false);
+        setGameEnded(true);
+      } else {
+        toast.error(`Failed to end game: ${error.message || "Unknown error"}`);
+      }
+    } finally {
+      setIsEndingGame(false);
+      setIsLoading(false);
+    }
+  };
 
   // Cancel a pending game
   const handleCancelGame = async (gameId: string) => {
@@ -353,6 +438,7 @@ export const VersusMode = ({ user }: { user: any }) => {
       });
       toast.success("Game cancelled and wager refunded");
       setWaitingForOpponent(false);
+      setGameInProgress(false);
       setMyGameId("");
     } catch (error: any) {
       console.error("Error cancelling game:", error);
@@ -362,9 +448,28 @@ export const VersusMode = ({ user }: { user: any }) => {
     }
   };
 
+  // Handle game board click
+  const handleBoardClick = () => {
+    // Ensure the game is initialized
+    if (!gameStore.isInitialized && gameStore.initGame) {
+      gameStore.initGame();
+    }
+  };
+
+  // Go back to the versus lobby
+  const handleBackToLobby = () => {
+    setGameInProgress(false);
+    setWaitingForOpponent(false);
+    setMyGameId("");
+    setHasSubmittedScore(false);
+    setGameEnded(false);
+    setHasTriggeredEndGame(false);
+    setCountdown(null);
+  };
+
   // Countdown timer for active game
   useEffect(() => {
-    if (!myGameId) {
+    if (!myGameId || !gameDetails?.isActive) {
       setCountdown(null);
       return;
     }
@@ -392,22 +497,38 @@ export const VersusMode = ({ user }: { user: any }) => {
       }
 
       // Automatically submit score and end game when timer reaches zero
-      //   if (timeLeft <= 0 && !gameEnded) {
-      //     if (!hasSubmittedScore) {
-      //       handleSubmitScore(myGameId).then(() => {
-      //         handleEndGame(myGameId);
-      //       });
-      //     } else {
-      //       handleEndGame(myGameId);
-      //     }
-      //   }
+      if (timeLeft <= 0 && !gameEnded && !hasTriggeredEndGame) {
+        setHasTriggeredEndGame(true); // Set flag to prevent multiple calls
+
+        if (!hasSubmittedScore && !isSubmittingScore) {
+          handleSubmitScore(myGameId).then(() => {
+            // Add a delay between submitting score and ending game
+            setTimeout(() => {
+              if (!isEndingGame) {
+                handleEndGame(myGameId);
+              }
+            }, 2000);
+          });
+        } else if (!isEndingGame) {
+          handleEndGame(myGameId);
+        }
+      }
     };
 
     updateCountdown();
     const intervalId = setInterval(updateCountdown, 1000);
 
     return () => clearInterval(intervalId);
-  }, [myGameId, hasSubmittedScore, gameEnded]);
+  }, [
+    myGameId,
+    gameDetails,
+    gameEnded,
+    address,
+    hasSubmittedScore,
+    isSubmittingScore,
+    isEndingGame,
+    hasTriggeredEndGame,
+  ]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -431,6 +552,53 @@ export const VersusMode = ({ user }: { user: any }) => {
       ) : !isConnected ? (
         <div className="py-8 text-center">
           <p className="text-lg">Failed to connect wallet. Please refresh the page.</p>
+        </div>
+      ) : gameInProgress ? (
+        // Active game UI
+        <div className="p-6 text-center">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold">Match vs {opponent}</h3>
+            <button className="btn btn-sm btn-ghost" onClick={handleBackToLobby}>
+              Back to Lobby
+            </button>
+          </div>
+
+          {countdown !== null && (
+            <div className="flex flex-col items-center p-3 mb-6 rounded-lg bg-base-200">
+              <p className="mb-1 text-sm">Time Remaining</p>
+              <div className="font-mono text-2xl countdown">
+                <span style={{ "--value": Math.floor(countdown / 60) } as React.CSSProperties}></span>:
+                <span style={{ "--value": countdown % 60 } as React.CSSProperties}></span>
+              </div>
+            </div>
+          )}
+
+          <div className="mb-4">
+            <p className="mb-2 text-lg">Your Score: {gameStore.score}</p>
+            {hasSubmittedScore ? (
+              <div className="badge badge-success">Score Submitted</div>
+            ) : (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => handleSubmitScore(myGameId)}
+                disabled={isLoading || isSubmittingScore}
+              >
+                {isLoading || isSubmittingScore ? <span className="loading loading-spinner"></span> : "Submit Score"}
+              </button>
+            )}
+          </div>
+
+          {/* Game board */}
+          <div className="p-4 mb-4 rounded-lg bg-base-300" onClick={handleBoardClick}>
+            {gameStore.isInitialized && gameStore.gameBoard ? (
+              <Board />
+            ) : (
+              <div className="flex items-center justify-center h-64">
+                <span className="loading loading-spinner"></span>
+                <p className="ml-2">Initializing Game Board...</p>
+              </div>
+            )}
+          </div>
         </div>
       ) : waitingForOpponent ? (
         // Waiting screen for player 1
@@ -522,92 +690,6 @@ export const VersusMode = ({ user }: { user: any }) => {
               {isLoading ? <span className="loading loading-spinner"></span> : "Send Challenge"}
             </button>
           </div>
-
-          {/* Manual Join section */}
-          {/* {!myGameId && (
-            <div className="p-4 mb-8 border rounded-lg border-base-300">
-              <h3 className="mb-3 text-lg font-semibold">Join by Game ID</h3>
-              <div className="form-control">
-                <label className="label">
-                  <span className="label-text">Game ID:</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Enter game ID shared by your friend"
-                  className="w-full input input-bordered"
-                  value={myGameId}
-                  onChange={e => setMyGameId(e.target.value)}
-                />
-              </div>
-              <button
-                className="w-full mt-4 btn btn-accent"
-                onClick={() => handleJoinGame(myGameId)}
-                disabled={isLoading || !myGameId}
-              >
-                {isLoading ? <span className="loading loading-spinner"></span> : "Join Game"}
-              </button>
-            </div>
-          )} */}
-
-          {/* Pending invites section */}
-          {/* {pendingInvites.length > 0 && (
-            <div className="mb-8">
-              <h3 className="mb-3 text-lg font-semibold">Game Invitations</h3>
-              <div className="space-y-3">
-                {pendingInvites.map(game => (
-                  <div key={game.id} className="p-3 border rounded-lg border-base-300">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p>
-                          From: <span className="font-semibold">{game.details.player1FarcasterName}</span>
-                        </p>
-                        <p className="text-sm">Wager: {Number(game.details.wagerAmount) / 1e18} MON</p>
-                      </div>
-                      <button
-                        className="btn btn-sm btn-accent"
-                        onClick={() => handleJoinGame(game.id)}
-                        disabled={isLoading}
-                      >
-                        Accept
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )} */}
-
-          {/* Your active games section (games you've created) */}
-          {/* {activeGames.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-lg font-semibold">Your Active Games</h3>
-              <div className="space-y-3">
-                {activeGames.map(game => (
-                  <div key={game.id} className="p-3 border rounded-lg border-base-300">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p>
-                          {game.details.player1 === address
-                            ? `vs ${game.details.player2FarcasterName}`
-                            : `vs ${game.details.player1FarcasterName}`}
-                        </p>
-                        <p className="text-sm">Wager: {Number(game.details.wagerAmount) / 1e18} MON</p>
-                      </div>
-                      {game.details.player2 === "0x0000000000000000000000000000000000000000" && (
-                        <button
-                          className="btn btn-sm btn-error"
-                          onClick={() => handleCancelGame(game.id)}
-                          disabled={isLoading}
-                        >
-                          Cancel
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )} */}
 
           {pendingInvites.length === 0 && !myGameId && (
             <div className="py-4 text-center text-base-content opacity-70">No active games or pending invitations</div>

@@ -427,7 +427,7 @@ export default function Home() {
             handleToggleMusic={handleToggleMusic}
             handleResetGame={handleResetGame}
             handleBoardClick={handleBoardClick}
-            gameWallet={gameWallet}
+            gameWallet={gameWallet as LocalAccount}
             user={user}
           />
         );

@@ -233,23 +233,24 @@ contract GameEscrow {
     /**
      * @notice Submit score for a player in an active game
      * @param gameId The ID of the game
+     * @param player The address of the player for whom to submit the score
      * @param score The player's score
      * @return success Whether the score was successfully submitted
      */
     function submitScore(
         bytes32 gameId,
+        address player,
         uint256 score
     ) external returns (bool success) {
         VersusGame storage game = versusGames[gameId];
 
         require(game.isActive, "Game not active");
-        require(block.timestamp <= game.endTime, "Game already ended");
         require(
-            msg.sender == game.player1 || msg.sender == game.player2,
-            "Not a player in this game"
+            player == game.player1 || player == game.player2,
+            "Not a valid player in this game"
         );
 
-        if (msg.sender == game.player1) {
+        if (player == game.player1) {
             require(!game.player1ScoreSubmitted, "Score already submitted");
             game.player1Score = score;
             game.player1ScoreSubmitted = true;
@@ -259,7 +260,7 @@ contract GameEscrow {
             game.player2ScoreSubmitted = true;
         }
 
-        emit ScoreSubmitted(gameId, msg.sender, score);
+        emit ScoreSubmitted(gameId, player, score);
         return true;
     }
 
