@@ -1,84 +1,58 @@
-# Scaffold-ETH 2 + Monad Testnet Config + A Simple Relayer with 50 Private Keys
+# Mon Match - Farcaster Mini App
 
-A high-performance transaction relayer system built on Scaffold-ETH 2, configured for Monad Testnet.
+A fun match-three style farcaster mini app, built on Monad blockchain, and powered by Scaffold-ETH 2.
 
-## 🏗 About
+![Mon Match Game](https://mon-crush-nextjs-five.vercel.app/thumbnail.jpg)
 
-This project demonstrates how to implement a high-throughput transaction relayer system with multiple private keys for parallel transaction processing. Built on top of Scaffold-ETH 2, it provides a simple yet powerful example of off-chain transaction management with on-chain execution.
+## 🔍 Technology Stack
 
-## 🚀 How It Works
+Mon Match is built using powerful, modern web3 technologies:
 
-- The relayer uses multiple private keys to send transactions in parallel
-- When you click "Increment", the request is queued on the server, which is a simple nextjs api route
-- Available private keys are assigned to process transactions from the queue
-- Each transaction calls the `increment()` function on the YourContract
-- This architecture allows for high throughput without transaction conflicts
+- **Scaffold-ETH 2**: The foundation framework that connects the frontend to blockchain
+- **Farcaster**: Social integration for user authentication and social features
+- **Foundry**: Smart contract development and testing framework
+- **Neynar**: API integration for Farcaster social features and notifications
 
-## 🏄‍♂️ Getting Started
+Additional technologies:
 
-Prerequisites: [Node.js](https://nodejs.org/en/) (>=18.18.0), [Yarn](https://yarnpkg.com/getting-started/install) (>=3.2.3), [Git](https://git-scm.com/downloads), [Foundry](https://book.getfoundry.sh/getting-started/installation)
+- **Blockchain**: Monad Testnet
+- **Frontend**: Next.js 15, React, TailwindCSS, DaisyUI
+- **Web3 Integration**: wagmi, viem
+- **Game Logic**: Custom match-three engine built in React
+- **Notifications**: Farcaster Frames and push notifications
 
-```bash
-# Clone the repository
-git clone https://github.com/portdeveloper/relayer-example-50-pks.git
+## 🎯 How to Play
 
-# Install dependencies
-yarn install
+### Solo Mode
 
-# Navigate to foundry package
-cd packages/foundry
+- Match 3 or more of the same Monanimal by swapping adjacent tiles
+- Create matches to earn points and increase your score
+- Try to maximize your score within the time limit
+- Scores are recorded on the Monad blockchain
 
-# Install foundry dependencies
-forge install
+### Versus Mode
 
-# Open a new terminal
+- Challenge a friend by sending them a game invitation
+- Each player wagers MON tokens on the outcome
+- Both players play the same board in parallel for a set time
+- The highest score wins the wager
+- Results are automatically processed on-chain
 
-# Start the development server
-yarn start
-```
+## 🎲 Game Features
 
-Visit your app at: http://localhost:3000
+- **Solo Mode**: Play at your own pace and compete for high scores
+- **Versus Mode**: Challenge friends to matches with crypto wagers
+- **Farcaster Integration**: Connect with your Farcaster account
+- **Blockchain Scoring**: All scores and game results stored on-chain
+- **Game Wallet**: Dedicated game wallet for smooth gameplay transactions
+- **Notifications**: Get notified when someone challenges you or when games end
 
-## 📝 Project Structure
+## 🛠️ Smart Contracts
 
-- **packages/nextjs**: Frontend application built with Next.js
-- **packages/foundry**: Smart contracts and deployment scripts
+The game uses several smart contracts:
 
-## 🔐 Using the Relayer
-
-This project demonstrates a high-throughput transaction relayer system:
-
-- Configure private keys in `.env` file (see `.env.example`)
-- The relayer automatically processes transaction requests from the queue
-- Customize the relayer logic in `packages/nextjs/api/relayer/increment/route.ts`
-
-## 🛠️ Customizing Smart Contracts
-
-- Edit contracts in `packages/foundry/contracts`
-- Deploy to your local node (anvil) with `yarn deploy`
-- Deploy to Monad Testnet with `yarn deploy --network monad_testnet`
-- Test with `yarn test`
-
-## 🤝 Need Help?
-
-- Check out the [Scaffold-ETH 2 Documentation](https://docs.scaffoldeth.io) for Scaffold-ETH 2 related questions
-- Join [Monad Developer Discord](https://discord.gg/monaddev) for any questions related to Monad
-
-## 📦 Tech Stack
-
-- **Blockchain Development**: Foundry (Solidity)
-- **Frontend**: Next.js, React, TailwindCSS
-- **Ethereum Interactions**: wagmi, viem
-- **Development Environment**: Scaffold-ETH 2
-- **Network**: Monad Testnet
-
-## 🔍 Features
-
-- Simple counter contract with increment functionality
-- Relayer system with 50 private keys for transaction handling
-- Clean and intuitive UI for interacting with the blockchain
-- Real-time block number updates
-- Transaction tracking
+- **MonadMatch.sol**: Main game contract for solo mode
+- **GameEscrow.sol**: Handles wagers and payouts for versus mode
 
 ## 📄 License
 
@@ -87,4 +61,3 @@ This project is licensed under the MIT License.
 ---
 
 Built with ❤️ using [Scaffold-ETH 2](https://github.com/scaffold-eth/scaffold-eth-2)
-
