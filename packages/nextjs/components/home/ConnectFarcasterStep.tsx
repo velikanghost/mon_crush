@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { LocalAccount, generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { useGameStore } from "~~/services/store/gameStore";
 import { decryptData, deriveEncryptionKey, encryptData } from "~~/services/utils/crypto";
+import { notification } from "~~/utils/scaffold-eth";
 
 interface ConnectFarcasterStepProps {
   isLoading: boolean;
@@ -49,7 +50,7 @@ export const ConnectFarcasterStep: FC<ConnectFarcasterStepProps> = ({
           gameStore.setGameWalletAddress(account.address);
 
           setCurrentStep(2); // Skip directly to game
-          toast.success("Existing game wallet restored! Skipping to game.");
+          //notification.success("Existing game wallet restored! Skipping to game.");
         } catch (error) {
           console.error("Failed to restore wallet after sign-in:", error);
           localStorage.removeItem(`gameWallet_${userIdentifier}`);
@@ -76,7 +77,7 @@ export const ConnectFarcasterStep: FC<ConnectFarcasterStepProps> = ({
           gameStore.setGameWalletAddress(account.address);
 
           setCurrentStep(2); // Skip directly to game
-          toast.success("Existing game wallet restored! Skipping to game.");
+          //notification.success("Existing game wallet restored! Skipping to game.");
           return;
         } catch (error) {
           console.error("Failed to restore wallet after sign-in:", error);
@@ -102,10 +103,10 @@ export const ConnectFarcasterStep: FC<ConnectFarcasterStepProps> = ({
           const encryptedPrivateKey = encryptData(privateKey, key);
           localStorage.setItem(`gameWallet_${userIdentifier}`, encryptedPrivateKey);
 
-          toast.success("New game wallet generated!");
+          notification.success("New game wallet generated!");
           setCurrentStep(1); // Move to funding step
         } catch (error) {
-          toast.error("Failed to generate game wallet.");
+          notification.error("Failed to generate game wallet.");
         }
       }
     }
@@ -175,7 +176,7 @@ export const ConnectFarcasterStep: FC<ConnectFarcasterStepProps> = ({
               .then(() => toast.dismiss())
               .catch(err => {
                 toast.dismiss();
-                toast.error(`Failed to connect: ${err.message || "Unknown error"}`);
+                notification.error(`Failed to connect`);
               });
           }}
         >

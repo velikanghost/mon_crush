@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Board from "./Board";
 import GameSummary from "./GameSummary";
+import { sdk } from "@farcaster/frame-sdk";
 import toast from "react-hot-toast";
 import { LocalAccount, parseEther } from "viem";
 import { useAccount, useConnect, useSwitchChain } from "wagmi";
@@ -15,6 +16,7 @@ import {
 } from "~~/services/notifications/gameNotifications";
 import { useGameStore } from "~~/services/store/gameStore";
 import { endVersusGame, submitVersusGameScore } from "~~/services/wallet/gameWalletService";
+import { notification } from "~~/utils/scaffold-eth";
 
 interface VersusGame {
   player1: string;
@@ -45,6 +47,8 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
   const [pendingInvites, setPendingInvites] = useState<{ id: string; details: VersusGame }[]>([]);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isJoiningGame, setIsJoiningGame] = useState(false);
+  const [isCreatingGame, setIsCreatingGame] = useState(false);
   const [hasSubmittedScore, setHasSubmittedScore] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
 
@@ -118,7 +122,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       setOpponent(isPlayer1 ? gameDetails.player2FarcasterName : gameDetails.player1FarcasterName);
     } else if (gameDetails && !gameDetails.isActive && gameInProgress) {
       // If game is no longer active but we thought it was
-      toast.success("Game has ended");
+      //notification.success("Game has ended");
       setGameInProgress(false);
       setGameEnded(true);
     }
@@ -146,7 +150,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         try {
           await switchChain({ chainId: monadTestnet.id });
         } catch (error) {
-          toast.error("Failed to switch to Monad Testnet. Please try again.");
+          notification.error("Failed to switch to Monad Testnet. Please try again.");
         }
       };
 
@@ -157,27 +161,27 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
   // Handle create game with connection check
   const handleCreateGame = async () => {
     if (!user?.username) {
-      toast.error("You need to be connected with Farcaster to create a versus game");
+      notification.error("You need to be connected with Farcaster to create a versus game");
       return;
     }
 
     if (!isConnected) {
-      toast.error("Please wait while connecting your wallet...");
+      notification.error("Please wait while connecting your wallet...");
       return;
     }
 
     if (!opponentName) {
-      toast.error("Please enter an opponent's Farcaster username");
+      notification.error("Please enter an opponent's Farcaster username");
       return;
     }
 
     if (opponentName === user.username) {
-      toast.error("You cannot challenge yourself");
+      notification.error("You cannot challenge yourself");
       return;
     }
 
     try {
-      setIsLoading(true);
+      setIsCreatingGame(true);
       setGameEnded(false);
       setGameResult(null);
       setGameInProgress(false);
@@ -195,7 +199,6 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
           },
           {
             onBlockConfirmation: async txnReceipt => {
-              setWaitingForOpponent(true);
               const gameId = txnReceipt.logs[0].topics[1];
               setMyGameId(gameId as string);
 
@@ -206,7 +209,8 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
                   wagerAmount,
                   gameId as `0x${string}`,
                 );
-                toast.success(`Game invitation sent to ${opponentName}!`);
+                setWaitingForOpponent(true);
+                notification.success(`Game invitation sent to ${opponentName}!`);
                 setOpponent(opponentName);
                 setOpponentName("");
               } catch (notifError) {
@@ -218,17 +222,17 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       }
     } catch (error: any) {
       console.error("Error creating game:", error);
-      toast.error(`Failed to create game: ${error.message || "Unknown error"}`);
+      //notification.error(`Failed to create game: ${error.message || "Unknown error"}`);
       setWaitingForOpponent(false);
     } finally {
-      setIsLoading(false);
+      setIsCreatingGame(false);
     }
   };
 
   // Join an existing game
   const handleJoinGame = async (id: string) => {
     try {
-      setIsLoading(true);
+      setIsJoiningGame(true);
 
       // Reset all game states immediately when joining
       setWaitingForOpponent(false);
@@ -241,7 +245,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         try {
           await switchChain({ chainId: monadTestnet.id });
         } catch (error) {
-          toast.error("Failed to switch to Monad Testnet. Please try again.");
+          notification.error("Failed to switch to Monad Testnet. Please try again.");
         }
       };
 
@@ -252,7 +256,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       console.log("gameDetails before joining", gameDetails);
 
       if (!gameDetails) {
-        toast.error("Game details not found");
+        notification.error("Game details not found");
         return;
       }
 
@@ -264,7 +268,6 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
 
       console.log("Game join receipt:", tx);
 
-      toast.success("You've joined the game!");
       setMyGameId(id);
       setHasSubmittedScore(false);
       setGameEnded(false); // Ensure this is explicitly set to false
@@ -275,6 +278,8 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       setGameInProgress(true);
       // Set opponent name for display
       setOpponent(gameDetails.player1FarcasterName);
+
+      notification.success("You've joined the game!");
 
       // Initialize the game board if not already initialized
       if (!gameStore.isInitialized) {
@@ -296,9 +301,9 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       refetchGameDetails();
     } catch (error: any) {
       console.error("Error joining game:", error);
-      toast.error(`Failed to join game: ${error.message || "Unknown error"}`);
+      //notification.error(`Failed to join game: ${error.message || "Unknown error"}`);
     } finally {
-      setIsLoading(false);
+      setIsJoiningGame(false);
     }
   };
 
@@ -315,14 +320,14 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       const gameWalletPrivateKey = gameStore.gameWalletPrivateKey;
 
       if (!gameWalletPrivateKey) {
-        toast.error("Game wallet private key not available");
+        notification.error("Game wallet private key not available");
         return;
       }
 
       // Check if game is still active before submitting score
       await refetchGameDetails();
       if (!gameDetails || !gameDetails.isActive) {
-        toast.success("Game is no longer active");
+        notification.success("Game is no longer active");
         setGameInProgress(false);
         return;
       }
@@ -331,19 +336,14 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       const success = await submitVersusGameScore(gameWalletPrivateKey, gameId, score, address as `0x${string}`);
 
       if (success) {
-        toast.success("Score submitted!");
+        notification.success("Score submitted!");
         setHasSubmittedScore(true);
         refetchScores();
       } else {
-        toast.error("Failed to submit score");
+        notification.error("Failed to submit score");
       }
     } catch (error: any) {
       console.error("Error submitting score:", error);
-      if (error.message && error.message.includes("429")) {
-        toast.error("Rate limit exceeded. Please try again in a moment.");
-      } else {
-        toast.error(`Failed to submit score: ${error.message || "Unknown error"}`);
-      }
     } finally {
       setIsSubmittingScore(false);
       setIsLoading(false);
@@ -368,12 +368,12 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
 
       // Check if the game can be ended
       if (!latestGameDetails) {
-        toast.error("Game details not found");
+        notification.error("Game details not found");
         return;
       }
 
       if (!latestGameDetails.isActive || latestGameDetails.isClaimed) {
-        toast.success("Game has already ended");
+        notification.success("Game has already ended");
         setGameInProgress(false);
         setWaitingForOpponent(false);
         setGameEnded(true);
@@ -384,7 +384,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       const gameWalletPrivateKey = gameStore.gameWalletPrivateKey;
 
       if (!gameWalletPrivateKey) {
-        toast.error("Game wallet private key not available");
+        notification.error("Game wallet private key not available");
         return;
       }
 
@@ -393,7 +393,6 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       // Use the gameWalletService function
       await endVersusGame(gameWalletPrivateKey, gameId);
 
-      toast.success("Game ended and prizes distributed!");
       setMyGameId("");
       setGameEnded(true);
 
@@ -463,21 +462,25 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         }
       }
 
+      notification.success("Game ended and prizes distributed!");
+
       // Ensure all the right states are set
       setGameInProgress(false);
       setWaitingForOpponent(false);
     } catch (error: any) {
       console.error("Error ending game:", error);
-      if (error.message && error.message.includes("429")) {
-        toast.error("Rate limit exceeded. Please try again in a moment.");
-      } else if (error.message && error.message.includes("Game not active")) {
-        toast.success("Game has already ended");
-        setGameInProgress(false);
-        setWaitingForOpponent(false);
-        setGameEnded(true);
-      } else {
-        toast.error(`Failed to end game: ${error.message || "Unknown error"}`);
-      }
+      notification.error(`Failed to end game`);
+
+      // if (error.message && error.message.includes("429")) {
+      //   notification.error("Rate limit exceeded. Please try again in a moment.");
+      // } else if (error.message && error.message.includes("Game not active")) {
+      //   notification.success("Game has already ended");
+      //   setGameInProgress(false);
+      //   setWaitingForOpponent(false);
+      //   setGameEnded(true);
+      // } else {
+      //   notification.error(`Failed to end game: ${error.message || "Unknown error"}`);
+      // }
     } finally {
       setIsEndingGame(false);
       setIsLoading(false);
@@ -492,13 +495,13 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         functionName: "cancelGame",
         args: [gameId as `0x${string}`],
       });
-      toast.success("Game cancelled and wager refunded");
+      notification.success("Game cancelled and wager refunded");
       setWaitingForOpponent(false);
       setGameInProgress(false);
       setMyGameId("");
     } catch (error: any) {
       console.error("Error cancelling game:", error);
-      toast.error(`Failed to cancel game: ${error.message || "Unknown error"}`);
+      notification.error(`Failed to cancel game`);
     } finally {
       setIsLoading(false);
     }
@@ -614,13 +617,22 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
 
   const handleSendCast = async () => {
     try {
-      // Assuming there's a function to send a cast about the game result
-      // This is a placeholder for the actual implementation
-      const message = `I just played a match in Mon Crush versus mode! My score: ${gameStore.score}`;
-      toast.success("Shared result on Farcaster!");
-      // You would implement the actual cast sharing logic here
+      // Create game result message
+      const isWinner = gameResult?.isWinner;
+      const winnerText = isWinner ? "I won! 🎉" : isWinner === false ? "I lost 😔" : "It was a tie! 🤝";
+
+      const message = `I just played Mon Crush versus mode against ${opponent}! ${winnerText}\n\nMy score: ${gameStore.score}\nOpponent score: ${opponentScore}\n\nPlay Mon Crush on @moncrush ⚡`;
+
+      // Use Farcaster SDK to compose cast
+      await sdk.actions.composeCast({
+        text: message,
+        embeds: ["https://mon-crush.vercel.app/"],
+      });
+
+      notification.success("Shared result on Farcaster!");
     } catch (error: any) {
-      toast.error(`Failed to send cast: ${error.message || "Unknown error"}`);
+      console.error("Error sending cast:", error);
+      notification.error(`Failed to send cast`);
     }
   };
 
@@ -722,7 +734,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
           </div>
 
           {/* Game board */}
-          <div className="p-4 mb-4 rounded-lg bg-base-300" onClick={handleBoardClick}>
+          <div className="mb-4 rounded-lg bg-base-300" onClick={handleBoardClick}>
             {gameStore.isInitialized && gameStore.gameBoard ? (
               <Board />
             ) : (
@@ -735,7 +747,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         </div>
       ) : gameEnded && gameResult ? (
         // Game summary UI - only show when we have game results
-        <div className="text-center">
+        <div className="px-3 text-center">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold">Game Results</h3>
             <button className="btn btn-sm btn-ghost" onClick={handleBackToLobby}>
@@ -758,7 +770,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         </div>
       ) : waitingForOpponent ? (
         // Waiting screen for player 1
-        <div className="text-center">
+        <div className="px-3 text-center">
           <h3 className="mb-4 text-lg font-bold">Waiting for Opponent</h3>
           <div className="flex justify-center mb-6">
             <span className="loading loading-spinner loading-lg"></span>
@@ -785,33 +797,8 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         </div>
       ) : (
         <div className="versus-lobby">
-          {/* Join by Game ID section (This appears if a gameId is provided in URL) */}
-
-          <div className="p-4 mb-8 border rounded-lg border-accent">
-            <h3 className="mb-3 text-lg font-semibold">Join Challenge</h3>
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Game ID:</span>
-              </label>
-              <input
-                type="text"
-                className="w-full input input-bordered"
-                value={myGameId}
-                onChange={e => setMyGameId(e.target.value)}
-                readOnly={!!myGameId}
-              />
-            </div>
-            <button
-              className="w-full mt-4 btn btn-accent"
-              onClick={() => handleJoinGame(myGameId)}
-              disabled={isLoading}
-            >
-              {isLoading ? <span className="loading loading-spinner"></span> : "Accept Challenge"}
-            </button>
-          </div>
-
           {/* Create new game section */}
-          <div className="p-4 mb-5 border rounded-lg border-base-300">
+          <div className="p-4 mb-5 border rounded-lg border-accent">
             <h3 className="mb-3 text-lg font-semibold">Challenge a Friend</h3>
             <div className="form-control">
               <label className="label">
@@ -841,8 +828,32 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
               />
             </div>
 
-            <button className="w-full mt-4 btn btn-primary" onClick={handleCreateGame} disabled={isLoading}>
-              {isLoading ? <span className="loading loading-spinner"></span> : "Send Challenge"}
+            <button className="w-full mt-4 btn btn-primary" onClick={handleCreateGame} disabled={isCreatingGame}>
+              {isCreatingGame ? <span className="loading loading-spinner"></span> : "Send Challenge"}
+            </button>
+          </div>
+
+          {/* Join by Game ID section (This appears if a gameId is provided in URL) */}
+          <div className="p-4 mb-8 border rounded-lg border-accent">
+            <h3 className="mb-3 text-lg font-semibold">Join Challenge</h3>
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Game ID:</span>
+              </label>
+              <input
+                type="text"
+                className="w-full input input-bordered"
+                value={myGameId}
+                onChange={e => setMyGameId(e.target.value)}
+                readOnly={!!myGameId}
+              />
+            </div>
+            <button
+              className="w-full mt-4 btn btn-accent"
+              onClick={() => handleJoinGame(myGameId)}
+              disabled={isJoiningGame}
+            >
+              {isJoiningGame ? <span className="loading loading-spinner"></span> : "Accept Challenge"}
             </button>
           </div>
         </div>

@@ -74,7 +74,7 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
       </div>
 
       {/* Game Mode Tabs */}
-      <div className="justify-center mb-4 tabs tabs-boxed">
+      <div className="justify-center mb-2 tabs tabs-boxed">
         <a className={`tab ${activeTab === "solo" ? "tab-active" : ""}`} onClick={() => setActiveTab("solo")}>
           Solo Mode
         </a>
@@ -96,7 +96,7 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
           </div>
 
           {/* Game Board - Full Width */}
-          <div className="flex flex-col items-center justify-center flex-grow w-full px-2" onClick={handleBoardClick}>
+          <div className="flex flex-col items-center justify-center flex-grow w-full px-4" onClick={handleBoardClick}>
             {gameWallet && gameStore.gameBoard ? (
               <>
                 <Board />

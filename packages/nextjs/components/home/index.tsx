@@ -19,6 +19,7 @@ import { initMatchSound } from "~~/services/store/gameLogic";
 import { useGameStore } from "~~/services/store/gameStore";
 import { decryptData, deriveEncryptionKey } from "~~/services/utils/crypto";
 import { clearUserSession, extendUserSession, getUserSession } from "~~/services/utils/sessionStorage";
+import { notification } from "~~/utils/scaffold-eth";
 
 export default function Home() {
   const { signIn, isLoading, isSignedIn, user, error } = useSignIn({
@@ -88,26 +89,26 @@ export default function Home() {
   // Function to link game wallet on-chain
   const handleLinkGameWallet = async () => {
     if (!gameWallet || !connectedAddress) {
-      toast.error("Game wallet or main wallet not available.");
+      notification.error("Game wallet or main wallet not available.");
       return;
     }
 
     // Check if already linked
     if (mainWalletForGameWallet === connectedAddress) {
-      toast.success("Game wallet already linked to this main wallet.");
+      notification.success("Game wallet already linked to this main wallet.");
       setCurrentStep(2); // Move to game if already linked
       return;
     }
     // Check if linked to another main wallet (should ideally not happen with current logic)
     if (mainWalletForGameWallet && mainWalletForGameWallet !== "0x0000000000000000000000000000000000000000") {
-      toast.error(`Game wallet already linked to a different main wallet: ${mainWalletForGameWallet}`);
+      notification.error(`Game wallet already linked to a different main wallet: ${mainWalletForGameWallet}`);
       // Potentially offer recovery or reset options here
       return;
     }
     try {
       await switchChain({ chainId: monadTestnet.id });
     } catch (switchError) {
-      toast.error("Failed to switch to Monad Testnet. Please switch manually.");
+      notification.error("Failed to switch to Monad Testnet. Please switch manually.");
       return;
     }
 
@@ -116,7 +117,7 @@ export default function Home() {
         functionName: "linkGameWallet",
         args: [gameWallet.address],
       });
-      toast.success("Game wallet successfully linked on-chain!");
+      notification.success("Game wallet successfully linked on-chain!");
       setCurrentStep(2); // Move to the game playing step
     } catch (error: any) {
       console.error("Error linking game wallet:", error);
@@ -126,7 +127,7 @@ export default function Home() {
   // Function to deposit funds
   const depositTokens = async () => {
     if (!gameWallet) {
-      toast.error("Game wallet not created yet.");
+      notification.error("Game wallet not created yet.");
       return;
     }
 
@@ -137,7 +138,7 @@ export default function Home() {
         const res = switchChain({ chainId: monadTestnet.id });
         console.log("res switchChain", res);
       } catch (switchError) {
-        toast.error("Failed to switch to Monad Testnet. Please switch manually.");
+        notification.error("Failed to switch to Monad Testnet. Please switch manually.");
         return;
       }
 
@@ -147,7 +148,7 @@ export default function Home() {
       });
 
       toast.dismiss(); // Dismiss loading toast
-      toast.success(`Successfully deposited ${depositAmount} MON!`);
+      notification.success(`Successfully deposited ${depositAmount} MON!`);
 
       // After successful funding, automatically try to link the wallet
       await handleLinkGameWallet();
@@ -192,7 +193,7 @@ export default function Home() {
           try {
             await switchChain({ chainId: monadTestnet.id });
           } catch (error) {
-            toast.error("Failed to switch to Monad Testnet. Please try again.");
+            notification.error("Failed to switch to Monad Testnet. Please try again.");
           }
         };
 
@@ -258,7 +259,7 @@ export default function Home() {
               gameStore.setGameWalletAddress(gameWallet.address);
             }
           } catch (error) {
-            toast.error("Failed to retrieve game wallet private key");
+            notification.error("Failed to retrieve game wallet private key");
           }
         }
 
@@ -267,7 +268,7 @@ export default function Home() {
 
         // Add a welcome message for guest users
         if (isGuestMode) {
-          toast.success("Welcome to guest mode! Enjoy the game!");
+          notification.success("Welcome to guest mode! Enjoy the game!");
           gameStore.setGameStatus("Guest mode active - Have fun!");
         } else {
           gameStore.setGameStatus("Game ready - Have fun!");
@@ -306,7 +307,7 @@ export default function Home() {
       // Clear transaction hashes from IndexedDB
       try {
         await clearTxHashesFromDB();
-        toast.success("Game reset! Transaction history cleared.");
+        notification.success("Game reset! Transaction history cleared.");
       } catch (error) {
         console.error("Error clearing transaction history:", error);
       }
@@ -382,7 +383,7 @@ export default function Home() {
           if (result?.notificationDetails) {
             console.log("Notifications enabled successfully!");
             localStorage.setItem(`notifications_requested_${user?.fid}`, "true");
-            toast.success("Notifications enabled for game updates!");
+            notification.success("Notifications enabled for game updates!");
           }
         }
       } catch (error) {
