@@ -34,7 +34,13 @@ interface VersusGame {
   player2ScoreSubmitted: boolean;
 }
 
-export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalAccount }) => {
+interface VersusProps {
+  user: any;
+  gameWallet: LocalAccount;
+  onGameStateChange?: (isActive: boolean) => void;
+}
+
+export const VersusMode = ({ user, gameWallet, onGameStateChange }: VersusProps) => {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { switchChain } = useSwitchChain();
@@ -63,6 +69,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
   const [gameInProgress, setGameInProgress] = useState(false);
   const [myGameId, setMyGameId] = useState("");
   const [opponent, setOpponent] = useState("");
+  const [finalizingResults, setFinalizingResults] = useState(false);
 
   // Add connection loading state
   const [isConnecting, setIsConnecting] = useState(false);
@@ -199,6 +206,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
           },
           {
             onBlockConfirmation: async txnReceipt => {
+              setWaitingForOpponent(true);
               const gameId = txnReceipt.logs[0].topics[1];
               setMyGameId(gameId as string);
 
@@ -209,7 +217,6 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
                   wagerAmount,
                   gameId as `0x${string}`,
                 );
-                setWaitingForOpponent(true);
                 notification.success(`Game invitation sent to ${opponentName}!`);
                 setOpponent(opponentName);
                 setOpponentName("");
@@ -240,6 +247,9 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       setGameResult(null);
       setHasSubmittedScore(false);
       setHasTriggeredEndGame(false);
+
+      // Notify parent that game is starting
+      if (onGameStateChange) onGameStateChange(true);
 
       const switchToMonadTestnet = async () => {
         try {
@@ -336,7 +346,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       const success = await submitVersusGameScore(gameWalletPrivateKey, gameId, score, address as `0x${string}`);
 
       if (success) {
-        notification.success("Score submitted!");
+        //notification.success("Score submitted!");
         setHasSubmittedScore(true);
         refetchScores();
       } else {
@@ -377,6 +387,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         setGameInProgress(false);
         setWaitingForOpponent(false);
         setGameEnded(true);
+        setFinalizingResults(false);
         return;
       }
 
@@ -467,20 +478,13 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       // Ensure all the right states are set
       setGameInProgress(false);
       setWaitingForOpponent(false);
+
+      // At the end, set finalizingResults to false
+      console.log("🏁 Game ended, setting finalizingResults to false");
+      setFinalizingResults(false);
     } catch (error: any) {
       console.error("Error ending game:", error);
-      notification.error(`Failed to end game`);
-
-      // if (error.message && error.message.includes("429")) {
-      //   notification.error("Rate limit exceeded. Please try again in a moment.");
-      // } else if (error.message && error.message.includes("Game not active")) {
-      //   notification.success("Game has already ended");
-      //   setGameInProgress(false);
-      //   setWaitingForOpponent(false);
-      //   setGameEnded(true);
-      // } else {
-      //   notification.error(`Failed to end game: ${error.message || "Unknown error"}`);
-      // }
+      setFinalizingResults(false);
     } finally {
       setIsEndingGame(false);
       setIsLoading(false);
@@ -509,13 +513,17 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
 
   // Handle game board click
   const handleBoardClick = () => {
+    if (countdown === 0) {
+      notification.error("Game has already ended");
+      return;
+    }
     // Ensure the game is initialized
     if (!gameStore.isInitialized && gameStore.initGame) {
       gameStore.initGame();
     }
   };
 
-  // Update handleBackToLobby to reset the gameResult state
+  // Update handleBackToLobby to notify parent component
   const handleBackToLobby = () => {
     setGameInProgress(false);
     setWaitingForOpponent(false);
@@ -525,6 +533,11 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
     setHasTriggeredEndGame(false);
     setCountdown(null);
     setGameResult(null);
+    gameStore.setScore(0);
+    gameStore.setMatches([]);
+
+    // Notify parent that we're returning to lobby
+    if (onGameStateChange) onGameStateChange(false);
   };
 
   // Update the countdown useEffect to ensure waitingForOpponent is reset
@@ -534,7 +547,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       return;
     }
 
-    const updateCountdown = () => {
+    const updateCountdown = async () => {
       const now = Math.floor(Date.now() / 1000);
       const endTime = Number(gameDetails?.endTime);
       const timeLeft = endTime - now;
@@ -560,20 +573,22 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       if (timeLeft <= 0 && !hasTriggeredEndGame) {
         setHasTriggeredEndGame(true); // Set flag to prevent multiple calls
         setWaitingForOpponent(false); // Ensure waiting state is reset
+        setFinalizingResults(true); // Set finalizing results state immediately when timer hits 0
+        console.log("⏰ Timer reached zero, setting finalizingResults to true");
 
         if (!hasSubmittedScore && !isSubmittingScore) {
           console.log("score", gameStore.score);
 
-          handleSubmitScore(myGameId).then(() => {
+          await handleSubmitScore(myGameId).then(async () => {
             // Add a delay between submitting score and ending game
-            setTimeout(() => {
+            setTimeout(async () => {
               if (!isEndingGame) {
-                handleEndGame(myGameId);
+                await handleEndGame(myGameId);
               }
             }, 2000);
           });
         } else if (!isEndingGame) {
-          handleEndGame(myGameId);
+          await handleEndGame(myGameId);
         }
       }
     };
@@ -609,6 +624,8 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
     setHasTriggeredEndGame(false);
     setCountdown(null);
     setGameResult(null);
+    gameStore.setScore(0);
+    gameStore.setMatches([]);
     // Reset the game store
     if (gameStore.initGame) {
       gameStore.initGame();
@@ -626,7 +643,7 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
       // Use Farcaster SDK to compose cast
       await sdk.actions.composeCast({
         text: message,
-        embeds: ["https://mon-crush.vercel.app/"],
+        embeds: ["https://mon-crush-nextjs-five.vercel.app/"],
       });
 
       notification.success("Shared result on Farcaster!");
@@ -683,6 +700,13 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
     }
   }, [gameEnded, gameDetails, address, gameStore.score, gameResult]);
 
+  // Notify parent component when game state changes
+  useEffect(() => {
+    if (onGameStateChange) {
+      onGameStateChange(gameInProgress || finalizingResults || (gameEnded && gameResult !== null));
+    }
+  }, [gameInProgress, finalizingResults, gameEnded, gameResult, onGameStateChange]);
+
   return (
     <div className="p-4 rounded-lg shadow-lg bg-base-100">
       {isConnecting ? (
@@ -698,39 +722,40 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         <div className="py-8 text-center">
           <p className="text-lg">Failed to connect wallet. Please refresh the page.</p>
         </div>
+      ) : finalizingResults ? (
+        // Show finalizing results screen
+        <div className="text-center">
+          <div className="flex flex-col items-center justify-center py-16">
+            <span className="loading loading-spinner loading-lg mb-4"></span>
+            <p className="text-lg font-medium">Finalizing results...</p>
+            <p className="text-sm opacity-70 mt-2">Please wait while we calculate the final scores</p>
+          </div>
+        </div>
       ) : gameInProgress ? (
         // Active game UI
         <div className="text-center">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold">Match vs {opponent}</h3>
-            <button className="btn btn-sm btn-ghost" onClick={handleBackToLobby}>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-lg font-bold my-0">Match vs {opponent}</h3>
+            <button className="btn btn-sm btn-primary" onClick={handleBackToLobby}>
               Back to Lobby
             </button>
           </div>
 
-          {countdown !== null && (
-            <div className="flex flex-col items-center p-3 mb-6 rounded-lg bg-base-200">
-              <p className="mb-1 text-sm">Time Remaining</p>
-              <div className="font-mono text-2xl countdown">
-                <span style={{ "--value": Math.floor(countdown / 60) } as React.CSSProperties}></span>:
-                <span style={{ "--value": countdown % 60 } as React.CSSProperties}></span>
+          <div className="mb-3 flex justify-between items-center  p-3 rounded-lg bg-base-200">
+            {countdown !== null && (
+              <div className="flex flex-col items-center">
+                <p className="my-0 text-sm">Time Remaining</p>
+                <div className="font-mono text-2xl countdown">
+                  <span style={{ "--value": Math.floor(countdown / 60) } as React.CSSProperties}></span>:
+                  <span style={{ "--value": countdown % 60 } as React.CSSProperties}></span>
+                </div>
               </div>
-            </div>
-          )}
-
-          <div className="mb-4">
-            <p className="mb-2 text-lg">Your Score: {gameStore.score}</p>
-            {hasSubmittedScore ? (
-              <div className="badge badge-success">Score Submitted</div>
-            ) : (
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => handleSubmitScore(myGameId)}
-                disabled={isLoading || isSubmittingScore}
-              >
-                {isLoading || isSubmittingScore ? <span className="loading loading-spinner"></span> : "Submit Score"}
-              </button>
             )}
+
+            <div className="flex flex-col items-center">
+              <p className="my-0 text-sm">Your Score</p>
+              <p className="my-0 font-mono text-2xl">{gameStore.score}</p>
+            </div>
           </div>
 
           {/* Game board */}
@@ -747,10 +772,10 @@ export const VersusMode = ({ user, gameWallet }: { user: any; gameWallet: LocalA
         </div>
       ) : gameEnded && gameResult ? (
         // Game summary UI - only show when we have game results
-        <div className="px-3 text-center">
+        <div className="text-center">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold">Game Results</h3>
-            <button className="btn btn-sm btn-ghost" onClick={handleBackToLobby}>
+            <button className="btn btn-sm btn-primary" onClick={handleBackToLobby}>
               Back to Lobby
             </button>
           </div>

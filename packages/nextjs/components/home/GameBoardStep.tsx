@@ -28,6 +28,12 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
   user,
 }) => {
   const [activeTab, setActiveTab] = useState<"solo" | "versus">("solo");
+  const [versusGameActive, setVersusGameActive] = useState(false);
+
+  // Handle game state changes from VersusMode
+  const handleGameStateChange = (isActive: boolean) => {
+    setVersusGameActive(isActive);
+  };
 
   return (
     <div className="flex flex-col w-full h-full">
@@ -73,17 +79,19 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
         </div>
       </div>
 
-      {/* Game Mode Tabs */}
-      <div className="justify-center mb-2 tabs tabs-boxed">
-        <a className={`tab ${activeTab === "solo" ? "tab-active" : ""}`} onClick={() => setActiveTab("solo")}>
-          Solo Mode
-        </a>
-        <a className={`tab ${activeTab === "versus" ? "tab-active" : ""}`} onClick={() => setActiveTab("versus")}>
-          Versus Mode
-        </a>
-      </div>
+      {/* Game Mode Tabs - Only show when no versus game is active */}
+      {!versusGameActive && (
+        <div className="justify-center mb-2 tabs tabs-boxed">
+          <a className={`tab ${activeTab === "solo" ? "tab-active" : ""}`} onClick={() => setActiveTab("solo")}>
+            Solo Mode
+          </a>
+          <a className={`tab ${activeTab === "versus" ? "tab-active" : ""}`} onClick={() => setActiveTab("versus")}>
+            Versus Mode
+          </a>
+        </div>
+      )}
 
-      {activeTab === "solo" ? (
+      {activeTab === "solo" && !versusGameActive ? (
         <>
           {/* Stats Row - Quick Access to Key Stats */}
           <div className="flex justify-center w-full px-4 mb-4">
@@ -111,7 +119,7 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
         </>
       ) : (
         <div className="flex-grow px-2 pb-3">
-          <VersusMode user={user} gameWallet={gameWallet} />
+          <VersusMode user={user} gameWallet={gameWallet} onGameStateChange={handleGameStateChange} />
         </div>
       )}
 
