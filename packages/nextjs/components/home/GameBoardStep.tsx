@@ -35,6 +35,18 @@ export const GameBoardStep: FC<GameBoardStepProps> = ({
     setVersusGameActive(isActive);
   };
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const gameIdParam = params.get("gameId");
+
+      // If gameId is present in the URL, automatically switch to versus mode
+      if (gameIdParam) {
+        setActiveTab("versus");
+      }
+    }
+  }, []);
+
   return (
     <div className="flex flex-col w-full h-full">
       {/* Top Row - Game Title and Stats */}
